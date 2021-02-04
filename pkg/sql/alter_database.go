@@ -229,6 +229,7 @@ func (n *alterDatabaseAddRegionNode) startExec(params runParams) error {
 	if err := params.p.applyZoneConfigFromDatabaseRegionConfig(
 		params.ctx,
 		tree.Name(n.desc.Name),
+		n.desc.GetID(),
 		*n.desc.RegionConfig); err != nil {
 		return err
 	}
@@ -351,6 +352,7 @@ func (n *alterDatabasePrimaryRegionNode) switchPrimaryRegion(params runParams) e
 	if err := params.p.applyZoneConfigFromDatabaseRegionConfig(
 		params.ctx,
 		tree.Name(n.desc.Name),
+		n.desc.GetID(),
 		*n.desc.RegionConfig); err != nil {
 		return err
 	}
@@ -510,6 +512,7 @@ func (n *alterDatabaseSurvivalGoalNode) startExec(params runParams) error {
 	if err := params.p.applyZoneConfigFromDatabaseRegionConfig(
 		params.ctx,
 		tree.Name(n.desc.Name),
+		n.desc.GetID(),
 		*n.desc.RegionConfig); err != nil {
 		return err
 	}

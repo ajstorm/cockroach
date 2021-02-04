@@ -136,6 +136,7 @@ func (n *alterTableSetLocalityNode) alterTableLocalityRegionalByTableToGlobal(
 		tableName,
 		n.tableDesc.TableDesc(),
 		*desc.RegionConfig,
+		true, /* dropRequired */
 	); err != nil {
 		return err
 	}
@@ -228,6 +229,7 @@ func (n *alterTableSetLocalityNode) alterTableLocalityRegionalByTableToRegionalB
 		tableName,
 		n.tableDesc.TableDesc(),
 		*desc.RegionConfig,
+		true, /* dropRequired */
 	); err != nil {
 		return err
 	}

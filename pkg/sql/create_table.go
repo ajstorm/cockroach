@@ -378,6 +378,7 @@ func (n *createTableNode) startExec(params runParams) error {
 			n.n.Table,
 			desc.TableDesc(),
 			*dbDesc.RegionConfig,
+			false, /* dropRequired */
 		); err != nil {
 			return err
 		}

@@ -17,7 +17,10 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/cockroach/pkg/config/zonepb"
+	"github.com/cockroachdb/cockroach/pkg/kv"
+	"github.com/cockroachdb/cockroach/pkg/security"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catalogkv"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/dbdesc"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/tabledesc"
@@ -238,37 +241,85 @@ func zoneConfigFromTableLocalityConfig(
 	return &ret, nil
 }
 
-// TODO(#multiregion): everything using this should instead use getZoneConfigRaw
-// and writeZoneConfig instead of calling SQL for each query.
 // This removes the requirement to only call this function after writeSchemaChange
 // is called on creation of tables, and potentially removes the need for ReadingOwnWrites
 // for some subcommands.
 // Requires some logic to "inherit" from parents.
-func (p *planner) applyZoneConfigForMultiRegion(
-	ctx context.Context, zs tree.ZoneSpecifier, zc *zonepb.ZoneConfig, desc string,
+func applyZoneConfigForMultiRegion(
+	ctx context.Context,
+	zs tree.ZoneSpecifier,
+	zc *zonepb.ZoneConfig,
+	targetID descpb.ID,
+	table catalog.TableDescriptor,
+	regionConfig descpb.DatabaseDescriptor_RegionConfig,
+	txn *kv.Txn,
+	execConfig *ExecutorConfig,
 ) error {
 	// TODO(#multiregion): We should check to see if the zone configuration has been updated
 	// by the user. If it has, we need to warn, and only proceed if sql_safe_updates is disabled.
 
-	// Convert the partially filled zone config to re-run as a SQL command.
-	// This avoid us having to modularize planNode logic from set_zone_config
-	// and the optimizer.
-	sql, err := zoneConfigToSQL(&zs, zc)
-	if err != nil {
-		return err
-	}
-	if _, err := p.ExtendedEvalContext().ExecCfg.InternalExecutor.ExecEx(
+	// FIXME: Do we need logic to write the sub-zone here?
+	// FIXME: Not sure that this is the best way to know if we need to build a sub-zone
+	// We only need to build the sub-zones if we're dealing with a table.
+	//	if table != nil {
+	//		zone, err := getZoneConfigRaw(ctx, txn, execConfig.Codec, targetID)
+	//		if err != nil {
+	//			return err
+	//		}
+	//		if zone == nil {
+	//			return errors.AssertionFailedf("expected zone config for ID %d", targetID)
+	//		}
+	//
+	//		for _, region := range regionConfig.Regions {
+	//			zc, err := zoneConfigFromRegionConfigForPartition(region, regionConfig)
+	//			if err != nil {
+	//				return err
+	//			}
+	//			// FIXME: is this right?
+	//			zone.SetSubzone(zonepb.Subzone{
+	//				IndexID:       uint32(targetID),
+	//				PartitionName: string(region.Name),
+	//				Config:        zc,
+	//			})
+	//		}
+	//	}
+
+	if _, err := writeZoneConfig(
 		ctx,
-		desc,
-		p.Txn(),
-		sessiondata.InternalExecutorOverride{
-			User: p.SessionData().User(),
-		},
-		sql,
+		txn,
+		targetID,
+		table,
+		zc,
+		execConfig,
+		true, /* hasNewSubzones */
 	); err != nil {
 		return err
 	}
+
 	return nil
+}
+
+// applyZoneConfigForMultiRegion is a helper function for
+// applyZoneConfigForMultiRegion, which does the real magic.
+func (p *planner) applyZoneConfigForMultiRegion(
+	ctx context.Context,
+	zs tree.ZoneSpecifier,
+	zc *zonepb.ZoneConfig,
+	targetID descpb.ID,
+	table catalog.TableDescriptor,
+	regionConfig descpb.DatabaseDescriptor_RegionConfig,
+	desc string,
+) error {
+	return applyZoneConfigForMultiRegion(
+		ctx,
+		zs,
+		zc,
+		targetID,
+		table,
+		regionConfig,
+		p.Txn(),
+		p.ExecCfg(),
+	)
 }
 
 func (p *planner) applyZoneConfigFromTableLocalityConfig(
@@ -276,6 +327,32 @@ func (p *planner) applyZoneConfigFromTableLocalityConfig(
 	tblName tree.TableName,
 	desc *descpb.TableDescriptor,
 	regionConfig descpb.DatabaseDescriptor_RegionConfig,
+	dropRequired bool,
+) error {
+	return ApplyZoneConfigFromTableLocalityConfig(
+		ctx,
+		tblName,
+		desc,
+		regionConfig,
+		p.txn,
+		p.ExtendedEvalContext(),
+		p.execCfg,
+		p.User(),
+		dropRequired,
+	)
+}
+
+func ApplyZoneConfigFromTableLocalityConfig(
+	ctx context.Context,
+	// FIXME: can we not get the table name from the table descriptor?
+	tblName tree.TableName,
+	desc *descpb.TableDescriptor,
+	regionConfig descpb.DatabaseDescriptor_RegionConfig,
+	txn *kv.Txn,
+	evalCtx *extendedEvalContext,
+	execCfg *ExecutorConfig,
+	user security.SQLUsername,
+	dropRequired bool,
 ) error {
 	localityConfig := *desc.LocalityConfig
 
@@ -299,7 +376,12 @@ func (p *planner) applyZoneConfigFromTableLocalityConfig(
 			}
 
 			for _, idx := range desc.Indexes {
-				if err := p.applyZoneConfigForMultiRegion(
+				idxDesc, err := catalogkv.GetDescriptorByID(ctx, txn, execCfg.Codec, descpb.ID(idx.ID),
+					catalogkv.Mutable, catalogkv.TableDescriptorKind, true)
+				if err != nil {
+					return err
+				}
+				if err := applyZoneConfigForMultiRegion(
 					ctx,
 					tree.ZoneSpecifier{
 						TableOrIndex: tree.TableIndexName{
@@ -309,13 +391,24 @@ func (p *planner) applyZoneConfigFromTableLocalityConfig(
 						Partition: tree.Name(region.Name),
 					},
 					&zc,
-					"index-multiregion-set-zone-config",
+					descpb.ID(idx.ID),
+					idxDesc.(catalog.TableDescriptor),
+					regionConfig,
+					txn,
+					execCfg,
 				); err != nil {
 					return err
 				}
 			}
 
-			if err := p.applyZoneConfigForMultiRegion(
+			// FIXME: this might not be right, as we're passing in table info for the
+			// ...primary index zc.
+			tableDesc, err := catalogkv.GetDescriptorByID(ctx, txn, execCfg.Codec, desc.ID,
+				catalogkv.Mutable, catalogkv.TableDescriptorKind, true)
+			if err != nil {
+				return err
+			}
+			if err = applyZoneConfigForMultiRegion(
 				ctx,
 				tree.ZoneSpecifier{
 					TableOrIndex: tree.TableIndexName{
@@ -325,7 +418,12 @@ func (p *planner) applyZoneConfigFromTableLocalityConfig(
 					Partition: tree.Name(region.Name),
 				},
 				&zc,
-				"primary-index-multiregion-set-zone-config",
+				desc.GetID(),
+				// FIXME: Wha?
+				tableDesc.(catalog.TableDescriptor),
+				regionConfig,
+				txn,
+				execCfg,
 			); err != nil {
 				return err
 			}
@@ -340,17 +438,33 @@ func (p *planner) applyZoneConfigFromTableLocalityConfig(
 		return err
 	}
 
-	// This means that the table doesn't need an explicit zone configuration. Drop
-	// one if it already exists and return.
+	// This means that the table doesn't need an explicit zone configuration.
 	if localityZoneConfig == nil {
-		return p.dropZoneConfigForTable(ctx, explicitTblName)
+		// FIXME: cleanup this comment here
+		// If we need to drop an existing zone configuration, do so.  If not, we're
+		// done, and can return.
+		if dropRequired {
+			return dropZoneConfigForTable(ctx, explicitTblName, evalCtx, user)
+		} else {
+			return nil
+		}
 	}
 
-	return p.applyZoneConfigForMultiRegion(
+	tableDesc, err := catalogkv.GetDescriptorByID(ctx, txn, execCfg.Codec, desc.ID,
+		catalogkv.Mutable, catalogkv.TableDescriptorKind, true)
+	if err != nil {
+		return err
+	}
+
+	return applyZoneConfigForMultiRegion(
 		ctx,
 		tree.ZoneSpecifier{TableOrIndex: tree.TableIndexName{Table: explicitTblName}},
 		localityZoneConfig,
-		"table-multiregion-set-zone-config",
+		tableDesc.GetID(),
+		tableDesc.(catalog.TableDescriptor),
+		regionConfig,
+		txn,
+		execCfg,
 	)
 }
 
@@ -398,31 +512,70 @@ func (p *planner) addNewZoneConfigSubzonesForIndex(
 	return nil
 }
 
-func (p *planner) applyZoneConfigFromDatabaseRegionConfig(
-	ctx context.Context, dbName tree.Name, regionConfig descpb.DatabaseDescriptor_RegionConfig,
+func ApplyZoneConfigFromDatabaseRegionConfig(
+	ctx context.Context,
+	dbName tree.Name,
+	dbID descpb.ID,
+	regionConfig descpb.DatabaseDescriptor_RegionConfig,
+	txn *kv.Txn,
+	evalCtx *extendedEvalContext,
+	execConfig *ExecutorConfig,
+	user security.SQLUsername,
 ) error {
 	// Convert the partially filled zone config to re-run as a SQL command.
 	// This avoid us having to modularize planNode logic from set_zone_config
 	// and the optimizer.
-	return p.applyZoneConfigForMultiRegion(
+	return applyZoneConfigForMultiRegion(
 		ctx,
 		tree.ZoneSpecifier{Database: dbName},
 		zoneConfigFromRegionConfigForDatabase(regionConfig),
-		"database-multiregion-set-zone-config",
+		dbID,
+		nil, /* table */
+		regionConfig,
+		txn,
+		execConfig,
 	)
 }
 
-// dropZoneConfigForTable drops the zone configuration for a table if one exists.
+func (p *planner) applyZoneConfigFromDatabaseRegionConfig(
+	ctx context.Context,
+	dbName tree.Name,
+	dbID descpb.ID,
+	regionConfig descpb.DatabaseDescriptor_RegionConfig,
+) error {
+	return ApplyZoneConfigFromDatabaseRegionConfig(
+		ctx,
+		dbName,
+		dbID,
+		regionConfig,
+		p.Txn(),
+		p.ExtendedEvalContext(),
+		p.ExecCfg(),
+		p.User(),
+	)
+}
+
 func (p *planner) dropZoneConfigForTable(ctx context.Context, name tree.TableName) error {
+	return dropZoneConfigForTable(
+		ctx,
+		name,
+		p.ExtendedEvalContext(),
+		p.SessionData().User())
+}
+
+func dropZoneConfigForTable(
+	ctx context.Context, name tree.TableName, evalCtx *extendedEvalContext, user security.SQLUsername,
+) error {
+	// dropZoneConfigForTable drops the zone configuration for a table if one exists.
 	// TODO(#multiregion): We should check to see if the zone configuration has been updated
 	// by the user. If it has, we need to warn, and only proceed if sql_safe_updates is disabled.
 	sql := fmt.Sprintf("ALTER TABLE %s CONFIGURE ZONE DISCARD", name.String())
-	if _, err := p.ExtendedEvalContext().ExecCfg.InternalExecutor.ExecEx(
+	if _, err := evalCtx.ExecCfg.InternalExecutor.ExecEx(
 		ctx,
 		"table-multiregion-discard-zone-config",
-		p.ExtendedEvalContext().Txn,
+		evalCtx.Txn,
 		sessiondata.InternalExecutorOverride{
-			User: p.SessionData().User(),
+			User: user,
 		},
 		sql,
 	); err != nil {
@@ -500,10 +653,10 @@ func (p *planner) updateZoneConfigsForAllTables(ctx context.Context, desc *dbdes
 		desc,
 		func(ctx context.Context, schema string, tbName tree.TableName, tbDesc *tabledesc.Mutable) error {
 			return p.applyZoneConfigFromTableLocalityConfig(
-				ctx,
-				tbName,
+				ctx, tbName,
 				tbDesc.TableDesc(),
 				*desc.RegionConfig,
+				true, /* dropRequired */
 			)
 		},
 	)
@@ -538,6 +691,7 @@ func (p *planner) initializeMultiRegionDatabase(ctx context.Context, desc *dbdes
 	if err := p.applyZoneConfigFromDatabaseRegionConfig(
 		ctx,
 		tree.Name(desc.Name),
+		desc.GetID(),
 		*desc.RegionConfig); err != nil {
 		return err
 	}

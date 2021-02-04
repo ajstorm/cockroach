@@ -1014,6 +1014,48 @@ func createImportingDescriptors(
 		dbsByID[databases[i].GetID()] = databases[i]
 	}
 
+	// FIXME: Still need a testcase for this...
+	// A couple of pieces of cleanup are required for multi-region databases.
+	// First, we need to find all of the MULTIREGION_ENUMs types and remap the
+	// IDs stored in the corresponding database descriptors to match the type's
+	// new ID.  Secondly, we need to rebuild the zone configuration for each
+	// multi-region database.  We only perform this action for database restores
+	// as cluster restore already restore the zone configurations.
+	for _, t := range typesByID {
+		typeDesc := t.TypeDesc()
+		if typeDesc.GetKind() == descpb.TypeDescriptor_MULTIREGION_ENUM {
+			if db, ok := dbsByID[typeDesc.GetParentID()]; ok {
+				desc := db.DatabaseDesc()
+				if desc.RegionConfig == nil {
+					return nil, nil, nil, errors.AssertionFailedf(
+						"Found MULTIREGION_ENUM on non-multi-region database %s", desc.Name)
+				}
+
+				// Update the RegionEnumID to record the new multi-region enum ID.
+				desc.RegionConfig.RegionEnumID = t.GetID()
+
+				// If we're not in a cluster restore, rebuild the database-level zone
+				// configuration.
+				if details.DescriptorCoverage != tree.AllDescriptors {
+					log.Infof(ctx, "restoring zone configuration for database %d", desc.ID)
+					if err := sql.ApplyZoneConfigFromDatabaseRegionConfig(
+						ctx,
+						tree.Name(desc.Name),
+						desc.GetID(),
+						*desc.RegionConfig,
+						// FIXME: Is it safe to use this Txn here?
+						p.ExtendedEvalContext().Txn,
+						p.ExtendedEvalContext(),
+						p.ExecCfg(),
+						p.User(),
+					); err != nil {
+						return nil, nil, nil, err
+					}
+				}
+			}
+		}
+	}
+
 	if !details.PrepareCompleted {
 		err := descs.Txn(
 			ctx, p.ExecCfg().Settings, p.ExecCfg().LeaseManager,
@@ -1039,6 +1081,7 @@ func createImportingDescriptors(
 						existingDBsWithNewSchemas[parentID] = append(existingDBsWithNewSchemas[parentID], sc)
 					}
 				}
+
 				// Write the updated databases.
 				for dbID, schemas := range existingDBsWithNewSchemas {
 					log.Infof(ctx, "writing %d schema entries to database %d", len(schemas), dbID)
@@ -1061,8 +1104,10 @@ func createImportingDescriptors(
 				}
 
 				// We could be restoring tables that point to existing types. We need to
-				// ensure that those existing types are updated with back references pointing
-				// to the new tables being restored.
+				// ensure that those existing types are updated with back references
+				// pointing to the new tables being restored.  While looping over all of
+				// the tables, we also build any zone configurations required for
+				// multi-region tables.
 				for _, table := range mutableTables {
 					// Collect all types used by this table.
 					typeIDs, err := table.GetAllReferencedTypeIDs(func(id descpb.ID) (catalog.TypeDescriptor, error) {
@@ -1090,6 +1135,31 @@ func createImportingDescriptors(
 							return err
 						}
 					}
+
+					//					if lc := table.GetLocalityConfig(); lc != nil {
+					//						// FIXME: Fill this in
+					//						// FIXME: will this really get the right database descriptor?
+					//						desc, err := descsCol.GetMutableDescriptorByID(ctx, table.ParentID, txn)
+					//						if err != nil {
+					//							return err
+					//						}
+					//						db := desc.(*dbdesc.Mutable)
+					//						// FIXME: keep fixing this (types below, and fixme above)
+					//						// FIXME: Make sure that when this is fixed, all types used are good.
+					//						if err := sql.ApplyZoneConfigFromTableLocalityConfig(
+					//							ctx,
+					//							tree.MakeTableName(tree.Name(db.Name), tree.Name(table.Name)),
+					//							&table.TableDescriptor,
+					//							*db.RegionConfig,
+					//							txn,
+					//							p.ExtendedEvalContext(),
+					//							p.ExecCfg(),
+					//							p.User(),
+					//							false, /* dropRequired */
+					//						); err != nil {
+					//							return err
+					//						}
+					//					}
 				}
 				if err := txn.Run(ctx, b); err != nil {
 					return err
@@ -1117,8 +1187,37 @@ func createImportingDescriptors(
 
 				// Update the job once all descs have been prepared for ingestion.
 				err := r.job.WithTxn(txn).SetDetails(ctx, details)
+				if err != nil {
+					return err
+				}
 
-				return err
+				//				for _, table := range mutableTables {
+				//					if lc := table.GetLocalityConfig(); lc != nil {
+				//						// FIXME: Fill this in
+				//						// FIXME: will this really get the right database descriptor?
+				//						desc, err := descsCol.GetMutableDescriptorByID(ctx, table.ParentID, txn)
+				//						if err != nil {
+				//							return err
+				//						}
+				//						db := desc.(*dbdesc.Mutable)
+				//						// FIXME: keep fixing this (types below, and fixme above)
+				//						// FIXME: Make sure that when this is fixed, all types used are good.
+				//						if err := sql.ApplyZoneConfigFromTableLocalityConfig(
+				//							ctx,
+				//							tree.MakeTableName(tree.Name(db.Name), tree.Name(table.Name)),
+				//							&table.TableDescriptor,
+				//							*db.RegionConfig,
+				//							txn,
+				//							p.ExtendedEvalContext(),
+				//							p.ExecCfg(),
+				//							p.User(),
+				//							false, /* dropRequired */
+				//						); err != nil {
+				//							return err
+				//						}
+				//					}
+				//				}
+				return nil
 			})
 		if err != nil {
 			return nil, nil, nil, err
@@ -1130,6 +1229,7 @@ func createImportingDescriptors(
 				return nil, nil, nil, err
 			}
 		}
+
 	}
 
 	return tables, oldTableIDs, spans, nil
@@ -1172,6 +1272,7 @@ func (r *restoreResumer) Resume(ctx context.Context, execCtx interface{}) error 
 			return err
 		}
 	}
+
 	r.execCfg = p.ExecCfg()
 	backupStats, err := getStatisticsFromBackup(ctx, defaultStore, details.Encryption, latestBackupManifest)
 	if err != nil {
@@ -1434,8 +1535,10 @@ func (r *restoreResumer) publishDescriptors(
 				return newDescriptorChangeJobs, err
 			}
 			newDescriptorChangeJobs = append(newDescriptorChangeJobs, newJobs...)
+
 		}
 	}
+
 	// For all of the newly created types, make type schema change jobs for any
 	// type descriptors that were backed up in the middle of a type schema change.
 	for _, typDesc := range details.TypeDescs {
@@ -1520,6 +1623,41 @@ func (r *restoreResumer) publishDescriptors(
 			"updating job details after publishing tables")
 	}
 	r.job.WithTxn(nil)
+
+	for _, tbl := range details.TableDescs {
+		mutTable, err := descsCol.GetMutableTableVersionByID(ctx, tbl.GetID(), txn)
+		if err != nil {
+			return newDescriptorChangeJobs, err
+		}
+		//FIXME: here!!!
+		// FIXME: This might not be the right place...
+		desc := mutTable.TableDesc()
+		if lc := desc.GetLocalityConfig(); lc != nil {
+			// FIXME: Fill this in
+			// FIXME: will this really get the right database descriptor?
+			// FIXME: Change name here.  Too close to desc above.
+			descs, err := descsCol.GetMutableDescriptorByID(ctx, desc.ParentID, txn)
+			if err != nil {
+				return nil, err
+			}
+			db := descs.(*dbdesc.Mutable)
+			// FIXME: keep fixing this (types below, and fixme above)
+			// FIXME: Make sure that when this is fixed, all types used are good.
+			if err := sql.ApplyZoneConfigFromTableLocalityConfig(
+				ctx,
+				tree.MakeTableName(tree.Name(db.Name), tree.Name(desc.GetName())),
+				desc,
+				*db.RegionConfig,
+				txn,
+				nil, /* evalCtx */ // FIXME: only needed in drop path.
+				r.execCfg,
+				security.SQLUsername{},
+				false, /* dropRequired */
+			); err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	return newDescriptorChangeJobs, nil
 }
