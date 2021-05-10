@@ -446,9 +446,7 @@ func NewColIndexJoin(
 		}
 	}
 
-	if err = keepOnlyNeededColumns(
-		evalCtx, tableArgs, idxMap, neededColumns, post, helper, flowCtx.TraceKV, flowCtx.PreserveFlowSpecs,
-	); err != nil {
+	if err = keepOnlyNeededColumns(evalCtx, tableArgs, idxMap, neededColumns, post, helper, flowCtx.TraceKV, flowCtx.PreserveFlowSpecs); err != nil {
 		return nil, err
 	}
 

@@ -123,6 +123,8 @@ func DetailsType(d isPayload_Details) Type {
 		return TypeAutoSQLStatsCompaction
 	case *Payload_StreamReplication:
 		return TypeStreamReplication
+	case *Payload_AutoMultiRegion:
+		return TypeAutoMultiRegion
 	default:
 		panic(errors.AssertionFailedf("Payload.Type called on a payload with an unknown details type: %T", d))
 	}
@@ -289,6 +291,8 @@ func WrapPayloadDetails(details Details) interface {
 		return &Payload_AutoSQLStatsCompaction{AutoSQLStatsCompaction: &d}
 	case StreamReplicationDetails:
 		return &Payload_StreamReplication{StreamReplication: &d}
+	case AutoMultiRegionDetails:
+		return &Payload_AutoMultiRegion{AutoMultiRegion: &d}
 	default:
 		panic(errors.AssertionFailedf("jobs.WrapPayloadDetails: unknown details type %T", d))
 	}
@@ -324,7 +328,7 @@ const (
 func (Type) SafeValue() {}
 
 // NumJobTypes is the number of jobs types.
-const NumJobTypes = 16
+const NumJobTypes = 17
 
 // MarshalJSONPB implements jsonpb.JSONPBMarshaller to  redact sensitive sink URI
 // parameters from ChangefeedDetails.

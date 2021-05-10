@@ -13,6 +13,7 @@ package sql
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/keys"
@@ -31,8 +32,10 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/privilege"
 	"github.com/cockroachdb/cockroach/pkg/sql/roleoption"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
+	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlerrors"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqltelemetry"
+	"github.com/cockroachdb/cockroach/pkg/sql/types"
 	"github.com/cockroachdb/cockroach/pkg/util/log/eventpb"
 	"github.com/cockroachdb/errors"
 )
@@ -645,6 +648,340 @@ func (n *alterDatabaseDropRegionNode) startExec(params runParams) error {
 func (n *alterDatabaseDropRegionNode) Next(runParams) (bool, error) { return false, nil }
 func (n *alterDatabaseDropRegionNode) Values() tree.Datums          { return tree.Datums{} }
 func (n *alterDatabaseDropRegionNode) Close(context.Context)        {}
+
+type alterDatabaseAutoMultiRegionNode struct {
+	n    *tree.AlterDatabaseAutoMultiRegion
+	desc *dbdesc.Mutable
+}
+
+// AlterDatabaseAutoMultiRegion transforms a tree.AlterDatabaseAutoMultiRegion
+// into a plan node.
+func (p *planner) AlterDatabaseAutoMultiRegion(
+	ctx context.Context, n *tree.AlterDatabaseAutoMultiRegion,
+) (planNode, error) {
+	dbDesc, err := p.Descriptors().GetMutableDatabaseByName(ctx, p.txn, string(n.Name),
+		tree.DatabaseLookupFlags{Required: true},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if !dbDesc.IsMultiRegion() {
+		return nil, pgerror.Newf(pgcode.InvalidDatabaseDefinition,
+			"can not enable automatic multi-region on non-multi-region database")
+	}
+
+	return &alterDatabaseAutoMultiRegionNode{
+		n,
+		dbDesc,
+	}, nil
+}
+
+func (n *alterDatabaseAutoMultiRegionNode) setAutoMultiRegionOnAllTables(
+	params runParams, val bool,
+) error {
+	b := params.p.Txn().NewBatch()
+	if err := params.p.forEachMutableTableInDatabase(
+		params.ctx,
+		n.desc,
+		func(ctx context.Context, scName string, tbDesc *tabledesc.Mutable) error {
+			// The user must either be an admin or have the requisite privileges.
+			if err := params.p.checkPrivilegesForMultiRegionOp(ctx, tbDesc); err != nil {
+				return err
+			}
+			tbDesc.AutoMultiRegionEnabled = true
+			return params.p.writeSchemaChangeToBatch(ctx, tbDesc, b)
+		},
+	); err != nil {
+		return err
+	}
+	err := params.p.Txn().Run(params.ctx, b)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+//  FIXME: Figure out why we're seeing double counting in some cases:
+//                  expected:
+//                    crdb_region     tab  reads  writes
+//                    ap-southeast-2  t    2      1
+//                    ca-central-1    t    2      0
+//                    us-east-1       t    2      1
+//                but found (query options: "colnames,retry") :
+//                    crdb_region     tab  reads  writes
+//                    ap-southeast-2  t    4      1
+//                    ca-central-1    t    2      0
+//                    us-east-1       t    2      1
+
+// Creates a single row level tracking table.
+func createRowLevelTrackingTable(
+	params runParams, tbDesc *tabledesc.Mutable, dbDesc *dbdesc.Mutable,
+) error {
+	// Don't create tracking tables if auto-multi-region is disabled, or if
+	// we're dealing with an auto-multi-region table.
+	if !dbDesc.IsAutoMultiRegionEnabled() ||
+		strings.Contains(tbDesc.Name, tree.AutoMultiRegionTableName) {
+		return nil
+	}
+
+	cols := tbDesc.GetColumns()
+	idx := tbDesc.GetPrimaryIndex()
+	// The reads, writes, and region columns + all of the PK columns
+	numColumns := 3 + idx.NumKeyColumns()
+	idxDef := tree.IndexTableDef{}
+	idxDef.Columns = make(tree.IndexElemList, 0, 1+idx.NumKeyColumns())
+
+	defs := make(tree.TableDefs, 0, numColumns)
+
+	// FIXME: change this to c1, and renumber below.
+	oid := typedesc.TypeIDToOID(dbDesc.RegionConfig.RegionEnumID)
+	c3 := regionalByRowDefaultColDef(oid, regionalByRowGatewayRegionDefaultExpr(oid), nil /* onUpdateExpr */)
+	defs = append(defs, c3)
+
+	idxDef.Columns = append(idxDef.Columns, tree.IndexElem{
+		Column:    c3.Name,
+		Direction: tree.Ascending,
+	})
+
+	for i := 0; i < idx.NumKeyColumns(); i++ {
+		var col *descpb.ColumnDescriptor
+		// Find the column we're looking for.
+		// FIXME: mapify this to make it more efficient.
+		for _, c := range cols {
+			colID := int(c.ID)
+			keyID := int(idx.GetKeyColumnID(i))
+			if colID == keyID {
+				col = &c
+				break
+			}
+		}
+		cDef := &tree.ColumnTableDef{
+			Name: tree.Name(col.Name),
+			Type: col.Type,
+		}
+		defs = append(defs, cDef)
+
+		idxDef.Columns = append(idxDef.Columns, tree.IndexElem{
+			Column:    cDef.Name,
+			Direction: tree.Ascending,
+		})
+	}
+
+	c1 := &tree.ColumnTableDef{
+		Name: "reads",
+		Type: types.Int4,
+	}
+	c1.Nullable.Nullability = tree.Null
+	defs = append(defs, c1)
+
+	c2 := &tree.ColumnTableDef{
+		Name: "writes",
+		Type: types.Int4,
+	}
+	defs = append(defs, c2)
+
+	defs = append(defs, &tree.UniqueConstraintTableDef{
+		PrimaryKey:    true,
+		IndexTableDef: idxDef,
+	})
+
+	createTable := tree.CreateTable{
+		IfNotExists: false,
+		// FIXME: What schema should this be placed in?
+		Table: tree.MakeTableNameWithSchema(
+			tree.Name(dbDesc.GetName()),
+			tree.Name(tree.AutoMultiRegionSchemaName),
+			tree.Name(tree.AutoMultiRegionTableName+"_"+tbDesc.GetName()),
+		),
+		Defs: defs,
+		Locality: &tree.Locality{
+			LocalityLevel:       tree.LocalityLevelRow,
+			RegionalByRowColumn: tree.RegionalByRowRegionDefaultColName,
+		},
+	}
+
+	ctNode := createTableNode{
+		n:      &createTable,
+		dbDesc: dbDesc,
+	}
+
+	return ctNode.startExec(params)
+}
+
+// CreateRowLevelTrackingTables creates the row-level tracking tables.
+// These are used to determine if a table should be REGIONAL BY ROW.
+func CreateRowLevelTrackingTables(params runParams, desc *dbdesc.Mutable) error {
+	// This code is pretty hacky right now.  For instance, we're creating a
+	// fake createTableNode so that we can call its corresponding startExec
+	// method.
+
+	b := params.p.Txn().NewBatch()
+	if err := params.p.forEachMutableTableInDatabase(
+		params.ctx,
+		desc,
+		func(ctx context.Context, scName string, tbDesc *tabledesc.Mutable) error {
+			return createRowLevelTrackingTable(params, tbDesc, desc)
+		},
+	); err != nil {
+		return err
+	}
+	return params.p.Txn().Run(params.ctx, b)
+}
+
+// Create the table level tracking table.  This is used to determine if a table
+// should be REGIONAL BY TABLE or GLOBAL.
+func (n *alterDatabaseAutoMultiRegionNode) createTableLevelTrackingTable(params runParams) error {
+	// This code is pretty hacky right now.  For instance, we're creating a
+	// fake createTableNode so that we can call its corresponding startExec
+	// method.
+
+	// CREATE TABLE crdb_internal_auto_multi_region
+	// (table string,
+	//  reads int,
+	//  writes int,
+	//  primary key (region, object))
+	// There's actually 4 columns, because one is the crdb_region column
+	numColumns := 4
+	defs := make(tree.TableDefs, 0, numColumns)
+	//	defs := make(tree.TableDefs, 0, len(columnDefs))
+
+	c1 := &tree.ColumnTableDef{
+		Name: "tab",
+		Type: types.String,
+	}
+	defs = append(defs, c1)
+
+	c2 := &tree.ColumnTableDef{
+		Name: "reads",
+		Type: types.Int4,
+	}
+	c2.Nullable.Nullability = tree.Null
+	defs = append(defs, c2)
+
+	c3 := &tree.ColumnTableDef{
+		Name: "writes",
+		Type: types.Int4,
+	}
+	defs = append(defs, c3)
+
+	oid := typedesc.TypeIDToOID(n.desc.RegionConfig.RegionEnumID)
+	c4 := regionalByRowDefaultColDef(oid, regionalByRowGatewayRegionDefaultExpr(oid), nil /* onUpdateExpr */)
+	defs = append(defs, c4)
+
+	idxDef := tree.IndexTableDef{}
+	idxDef.Columns = make(tree.IndexElemList, 0, 2)
+	idxDef.Columns = append(idxDef.Columns, tree.IndexElem{
+		Column:    c4.Name,
+		Direction: tree.Ascending,
+	})
+	idxDef.Columns = append(idxDef.Columns, tree.IndexElem{
+		Column:    c1.Name,
+		Direction: tree.Ascending,
+	})
+
+	defs = append(defs, &tree.UniqueConstraintTableDef{
+		PrimaryKey:    true,
+		IndexTableDef: idxDef,
+	})
+
+	createTable := tree.CreateTable{
+		IfNotExists: false,
+		// FIXME: What schema should this be placed in?
+		Table: tree.MakeTableNameWithSchema(
+			tree.Name(n.desc.GetName()),
+			tree.Name(tree.AutoMultiRegionSchemaName),
+			tree.Name(tree.AutoMultiRegionTableName),
+		),
+		Defs: defs,
+		Locality: &tree.Locality{
+			LocalityLevel:       tree.LocalityLevelRow,
+			RegionalByRowColumn: tree.RegionalByRowRegionDefaultColName,
+		},
+	}
+
+	ctNode := createTableNode{
+		n:      &createTable,
+		dbDesc: n.desc,
+	}
+
+	if err := ctNode.startExec(params); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (n *alterDatabaseAutoMultiRegionNode) startExec(params runParams) error {
+	dropTableStatement := fmt.Sprintf(
+		"DROP TABLE %s.%s",
+		tree.AutoMultiRegionSchemaName,
+		tree.AutoMultiRegionTableName,
+	)
+
+	// FIXME: this should be it's own function.
+	if !n.n.State {
+		if !n.desc.IsAutoMultiRegionEnabled() {
+			return nil
+		}
+
+		// Disabling automatic multi-region just requires us to drop the table.
+		if _, err := params.p.execCfg.InternalExecutor.ExecEx(
+			params.ctx,
+			"drop-auto-multi-region-table",
+			params.p.Txn(),
+			sessiondata.InternalExecutorOverride{
+				User:     params.p.User(),
+				Database: n.desc.Name,
+			},
+			dropTableStatement,
+		); err != nil {
+			return err
+		}
+
+		n.desc.AutoMultiRegionEnabled = false
+		if err := params.p.writeNonDropDatabaseChange(
+			params.ctx,
+			n.desc,
+			tree.AsStringWithFQNames(n.n, params.Ann()),
+		); err != nil {
+			return err
+		}
+
+		return n.setAutoMultiRegionOnAllTables(params, true)
+	}
+
+	// Create the table-level tracking table.
+	// FIXME: There's no handling for dropping these tables if anything
+	//  fails.
+	if err := n.createTableLevelTrackingTable(params); err != nil {
+		return err
+	}
+
+	if err := CreateRowLevelTrackingTables(params, n.desc); err != nil {
+		return err
+	}
+
+	n.desc.AutoMultiRegionEnabled = true
+	if err := params.p.writeNonDropDatabaseChange(
+		params.ctx,
+		n.desc,
+		tree.AsStringWithFQNames(n.n, params.Ann()),
+	); err != nil {
+		return err
+	}
+
+	return n.setAutoMultiRegionOnAllTables(params, true)
+
+	// TODO: Create the table-specific tables
+	// TODO: To complete the work to create the table above, create a fake
+	//  createTableNode and call the startExec method (any other way is going
+	//  to be way too painful).
+}
+
+func (n *alterDatabaseAutoMultiRegionNode) Next(runParams) (bool, error) { return false, nil }
+func (n *alterDatabaseAutoMultiRegionNode) Values() tree.Datums          { return tree.Datums{} }
+func (n *alterDatabaseAutoMultiRegionNode) Close(context.Context)        {}
 
 type alterDatabasePrimaryRegionNode struct {
 	n    *tree.AlterDatabasePrimaryRegion

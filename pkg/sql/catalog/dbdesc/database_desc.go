@@ -147,6 +147,22 @@ func (desc *immutable) IsMultiRegion() bool {
 	return desc.RegionConfig != nil
 }
 
+// IsAutoMultiRegionEnabled returns whether auto multi-region evaluation is
+// enabled.
+func (desc *immutable) IsAutoMultiRegionEnabled() bool {
+	return desc.AutoMultiRegionEnabled
+}
+
+// MultiRegionEnumID returns the ID of the multi-region enum if the database
+// is a multi-region database, and an error otherwise.
+func (desc *immutable) MultiRegionEnumID() (descpb.ID, error) {
+	if !desc.IsMultiRegion() {
+		return descpb.InvalidID, errors.AssertionFailedf(
+			"can not get multi-region enum ID of a non multi-region database")
+	}
+	return desc.RegionConfig.RegionEnumID, nil
+}
+
 // PrimaryRegionName implements the DatabaseDescriptor interface.
 func (desc *immutable) PrimaryRegionName() (descpb.RegionName, error) {
 	if !desc.IsMultiRegion() {
@@ -154,15 +170,6 @@ func (desc *immutable) PrimaryRegionName() (descpb.RegionName, error) {
 			"can not get the primary region of a non multi-region database")
 	}
 	return desc.RegionConfig.PrimaryRegion, nil
-}
-
-// MultiRegionEnumID implements the DatabaseDescriptor interface.
-func (desc *immutable) MultiRegionEnumID() (descpb.ID, error) {
-	if !desc.IsMultiRegion() {
-		return descpb.InvalidID, errors.AssertionFailedf(
-			"can not get multi-region enum ID of a non multi-region database")
-	}
-	return desc.RegionConfig.RegionEnumID, nil
 }
 
 // SetName sets the name on the descriptor.

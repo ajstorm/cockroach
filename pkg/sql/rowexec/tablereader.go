@@ -324,6 +324,7 @@ func (tr *tableReader) execStatsForTrace() *execinfrapb.ComponentStats {
 	return ret
 }
 
+
 func (tr *tableReader) generateMeta() []execinfrapb.ProducerMetadata {
 	var trailingMeta []execinfrapb.ProducerMetadata
 	if !tr.ignoreMisplannedRanges {
@@ -343,6 +344,7 @@ func (tr *tableReader) generateMeta() []execinfrapb.ProducerMetadata {
 	meta.Metrics = execinfrapb.GetMetricsMeta()
 	meta.Metrics.BytesRead = tr.fetcher.GetBytesRead()
 	meta.Metrics.RowsRead = tr.rowsRead
+
 	return append(trailingMeta, *meta)
 }
 

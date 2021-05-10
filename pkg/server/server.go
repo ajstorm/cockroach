@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/cmux"
+	_ "github.com/cockroachdb/cockroach/pkg/auto_multi_region/auto_multi_region_job" // Register jobs declared outside of pkg/sql
 	"github.com/cockroachdb/cockroach/pkg/base"
 	"github.com/cockroachdb/cockroach/pkg/blobs"
 	"github.com/cockroachdb/cockroach/pkg/cloud"

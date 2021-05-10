@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/cockroach/pkg/auto_multi_region"
 	"github.com/cockroachdb/cockroach/pkg/col/coldata"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/tabledesc"
@@ -27,6 +28,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/rowinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/mon"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
@@ -117,6 +119,32 @@ func (s *ColBatchScan) Next() coldata.Batch {
 	s.mu.Lock()
 	s.mu.rowsRead += int64(bat.Length())
 	s.mu.Unlock()
+
+	// FIXME: do below inside the latch?  How will concurrent operations impact things here?
+	//
+	// FIXME: instead of a new schema job for each batch, increment the count
+	//  of rows read in a map (table, region, rows read).  Then, have a
+	//  perpetual background schema job pulling out of the map and updating the
+	//  underlying table.
+	// Update the auto multi-region stats
+	if bat.Length() != 0 {
+		if err := auto_multi_region.CreateUpdateRecordForRead(
+			s.Ctx,
+			s.rf.table.desc,
+			s.flowCtx.EvalCtx,
+			s.flowCtx.Cfg.JobRegistry,
+			s.flowCtx.Cfg.Gossip,
+			s.flowCtx.Txn.GatewayNodeID(),
+			bat,
+			int64(bat.Length()),
+			s.rf.table.cFetcherTableArgs.cols,
+		).UpdateForRead(); err != nil {
+			// Log and eat the error to prevent auto-multi-region statistics
+			// collection from generating user errors.
+			log.VEventf(s.Ctx, 1, "Couldn't create auto-multi-region job. Error: %v", err)
+		}
+	}
+
 	return bat
 }
 
@@ -143,6 +171,7 @@ func (s *ColBatchScan) DrainMeta() []execinfrapb.ProducerMetadata {
 	if trace := execinfra.GetTraceData(s.Ctx); trace != nil {
 		trailingMeta = append(trailingMeta, execinfrapb.ProducerMetadata{TraceData: trace})
 	}
+
 	return trailingMeta
 }
 
@@ -216,9 +245,26 @@ func NewColBatchScan(
 		return nil, err
 	}
 
-	if err = keepOnlyNeededColumns(
-		evalCtx, tableArgs, idxMap, spec.NeededColumns, post, helper, flowCtx.TraceKV, flowCtx.PreserveFlowSpecs,
-	); err != nil {
+	// FIXME: This condition can be made into a function - table.RequiresAutoMultiRegionReporting()
+	if table.IsAutoMultiRegionEnabled() && table.GetName() != tree.AutoMultiRegionTableName {
+		// Add the PK columns to NeededColumns, if they're not there already.
+		idx := table.GetPrimaryIndex()
+		for i := 0; i < idx.NumKeyColumns(); i++ {
+			colID := uint32(idx.GetKeyColumnID(i))
+			found := false
+			for _, j := range spec.NeededColumns {
+				if j == colID {
+					found = true
+					break
+				}
+			}
+			if found == false {
+				spec.NeededColumns = append(spec.NeededColumns, colID)
+			}
+		}
+	}
+
+	if err = keepOnlyNeededColumns(evalCtx, tableArgs, idxMap, spec.NeededColumns, post, helper, flowCtx.TraceKV, flowCtx.PreserveFlowSpecs); err != nil {
 		return nil, err
 	}
 

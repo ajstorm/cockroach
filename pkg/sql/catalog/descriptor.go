@@ -236,6 +236,7 @@ type DatabaseDescriptor interface {
 	// GetDefaultPrivilegeDescriptor returns the default privileges for this
 	// database.
 	GetDefaultPrivilegeDescriptor() DefaultPrivilegeDescriptor
+	IsAutoMultiRegionEnabled() bool
 }
 
 // TableDescriptor is an interface around the table descriptor types.
@@ -595,6 +596,8 @@ type TableDescriptor interface {
 	// GetRegionalByRowTableRegionColumnName returns the region column name of a
 	// REGIONAL BY ROW table.
 	GetRegionalByRowTableRegionColumnName() (tree.Name, error)
+
+	IsAutoMultiRegionEnabled() bool
 }
 
 // TypeDescriptor will eventually be called typedesc.Descriptor.

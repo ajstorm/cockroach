@@ -397,6 +397,9 @@ func (n *createTableNode) startExec(params runParams) error {
 		}
 	}
 
+	// FIXME: This should be put somewhere more appropriate.
+	desc.AutoMultiRegionEnabled = n.dbDesc.IsAutoMultiRegionEnabled()
+
 	// Descriptor written to store here.
 	if err := params.p.createDescriptorWithID(
 		params.ctx,
@@ -544,7 +547,7 @@ func (n *createTableNode) startExec(params runParams) error {
 					if err != nil {
 						return err
 					}
-					if err := tw.finalize(params.ctx); err != nil {
+					if err := tw.finalize(params); err != nil {
 						return err
 					}
 					break
@@ -2272,6 +2275,24 @@ func newTableDesc(
 			n.Persistence,
 		)
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	// If we've created a descriptor, add the auto-multi-region table.
+	if ret != nil {
+		// FIXME: Do we really need to get this here?  Can we not pull from somewhere else?
+		dbDesc, err := params.p.Descriptors().GetMutableDatabaseByName(params.ctx, params.p.txn, db.GetName(),
+			tree.DatabaseLookupFlags{Required: true},
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := createRowLevelTrackingTable(params, ret, dbDesc); err != nil {
+			return nil, err
+		}
+	}
 
 	return ret, err
 }

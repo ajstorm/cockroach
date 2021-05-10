@@ -72,9 +72,9 @@ message StreamIngestionDetails {
   // StreamAddress locates the stream. It enables the client to find the
   // addresses of the stream's partitions.
   string stream_address = 1;
-  
+
   uint64 stream_id = 4 [(gogoproto.customname) = "StreamID"];
-  
+
   // Span is the keyspan into which this job will ingest KVs.
   //
   // The stream should emit all changes for a given span, and no changes outside
@@ -83,7 +83,7 @@ message StreamIngestionDetails {
   roachpb.Span span = 2 [(gogoproto.nullable) = false];
   // The job will ingest events from StartTime onwards.
   util.hlc.Timestamp start_time = 3 [(gogoproto.nullable) = false];
-  
+
   uint64 tenant_id = 5 [(gogoproto.customname) = "TenantID"];
 }
 
@@ -742,6 +742,12 @@ message MigrationDetails {
   clusterversion.ClusterVersion cluster_version = 1;
 }
 
+message AutoMultiRegionDetails {
+  string tableMutation = 1;
+  string rowMutation = 2;
+  string database = 3;
+}
+
 message MigrationProgress {
   bytes watermark = 1;
 }
@@ -798,6 +804,7 @@ message Payload {
     AutoSpanConfigReconciliationDetails autoSpanConfigReconciliation = 27;
     AutoSQLStatsCompactionDetails autoSQLStatsCompaction = 30;
     StreamReplicationDetails streamReplication = 33;
+    AutoMultiRegionDetails autoMultiRegion = 34;
   }
   reserved 26;
   // PauseReason is used to describe the reason that the job is currently paused
@@ -809,7 +816,7 @@ message Payload {
   // the jobs.execution_errors.max_entries cluster setting.
   repeated RetriableExecutionFailure retriable_execution_failure_log = 32;
 
-  // NEXT ID: 34.
+  // NEXT ID: 35.
 }
 
 message Progress {
@@ -862,6 +869,7 @@ enum Type {
   AUTO_SPAN_CONFIG_RECONCILIATION = 13 [(gogoproto.enumvalue_customname) = "TypeAutoSpanConfigReconciliation"];
   AUTO_SQL_STATS_COMPACTION = 14 [(gogoproto.enumvalue_customname) = "TypeAutoSQLStatsCompaction"];
   STREAM_REPLICATION = 15 [(gogoproto.enumvalue_customname) = "TypeStreamReplication"];
+  AUTO_MULTI_REGION = 16 [(gogoproto.enumvalue_customname) = "TypeAutoMultiRegion"];
 }
 
 message Job {

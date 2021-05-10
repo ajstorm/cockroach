@@ -447,3 +447,9 @@ func (desc *wrapper) getExistingOrNewMutationCache() *mutationCache {
 func (desc *wrapper) AllMutations() []catalog.Mutation {
 	return desc.getExistingOrNewMutationCache().all
 }
+
+// IsAutoMultiRegionEnabled returns whether or not auto multi-region evaluation
+// is enabled.
+func (desc *wrapper) IsAutoMultiRegionEnabled() bool {
+	return desc.AutoMultiRegionEnabled
+}

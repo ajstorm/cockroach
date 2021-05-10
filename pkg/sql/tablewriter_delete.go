@@ -86,7 +86,7 @@ func (td *tableDeleter) deleteAllRows(
 	log.VEventf(ctx, 2, "DelRange %s - %s", resume.Key, resume.EndKey)
 	td.b.DelRange(resume.Key, resume.EndKey, false /* returnKeys */)
 	td.b.Header.MaxSpanRequestKeys = limit
-	if err := td.finalize(ctx); err != nil {
+	if err := td.finalizeForDelete(ctx); err != nil {
 		return resume, err
 	}
 	if l := len(td.b.Results); l != 1 {
@@ -116,7 +116,7 @@ func (td *tableDeleter) deleteIndex(
 	}
 	td.b.DelRange(resume.Key, resume.EndKey, false /* returnKeys */)
 	td.b.Header.MaxSpanRequestKeys = limit
-	if err := td.finalize(ctx); err != nil {
+	if err := td.finalizeForDelete(ctx); err != nil {
 		return resume, err
 	}
 	if l := len(td.b.Results); l != 1 {

@@ -257,7 +257,18 @@ func (n *insertNode) BatchedNext(params runParams) (bool, error) {
 
 	if lastBatch {
 		n.run.ti.setRowsWrittenLimit(params.extendedEvalCtx.SessionData())
-		if err := n.run.ti.finalize(params.ctx); err != nil {
+
+		// Before we commit, do any auto multi-region work required.
+		//		if err := updateAutoMultiRegionStatsForWrite(
+		//			n.run.ti.tableDesc(),
+		//			params,
+		//			n.run.ti.txn,
+		//			n.run.ti.currentBatchSize,
+		//		); err != nil {
+		//			return false, err
+		//		}
+
+		if err := n.run.ti.finalize(params); err != nil {
 			return false, err
 		}
 		// Remember we're done for the next call to BatchedNext().

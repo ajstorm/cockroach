@@ -121,7 +121,7 @@ func (n *upsertNode) BatchedNext(params runParams) (bool, error) {
 
 	if lastBatch {
 		n.run.tw.setRowsWrittenLimit(params.extendedEvalCtx.SessionData())
-		if err := n.run.tw.finalize(params.ctx); err != nil {
+		if err := n.run.tw.finalize(params); err != nil {
 			return false, err
 		}
 		// Remember we're done for the next call to BatchedNext().
