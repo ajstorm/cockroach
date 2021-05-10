@@ -172,6 +172,9 @@ func (ex *connExecutor) execStmt(
 		}
 	}
 
+	// TODO: If we make it down here, and we're a mutation, record that fact
+	//  in the auto_multi_region table.
+
 	return ev, payload, err
 }
 

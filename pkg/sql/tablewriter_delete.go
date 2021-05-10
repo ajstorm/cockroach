@@ -98,7 +98,7 @@ func (td *tableDeleter) deleteAllRowsFast(
 	log.VEventf(ctx, 2, "DelRange %s - %s", resume.Key, resume.EndKey)
 	td.b.DelRange(resume.Key, resume.EndKey, false /* returnKeys */)
 	td.b.Header.MaxSpanRequestKeys = limit
-	if err := td.finalize(ctx); err != nil {
+	if err := td.finalizeForDelete(ctx); err != nil {
 		return resume, err
 	}
 	if l := len(td.b.Results); l != 1 {
@@ -176,7 +176,7 @@ func (td *tableDeleter) deleteAllRowsScan(
 		// Update the resume start key for the next iteration.
 		resume.Key = rf.Key()
 	}
-	return resume, td.finalize(ctx)
+	return resume, td.finalizeForDelete(ctx)
 }
 
 // deleteIndex runs the kv operations necessary to delete all kv entries in the
@@ -212,7 +212,7 @@ func (td *tableDeleter) deleteIndexFast(
 	}
 	td.b.DelRange(resume.Key, resume.EndKey, false /* returnKeys */)
 	td.b.Header.MaxSpanRequestKeys = limit
-	if err := td.finalize(ctx); err != nil {
+	if err := td.finalizeForDelete(ctx); err != nil {
 		return resume, err
 	}
 	if l := len(td.b.Results); l != 1 {
@@ -305,7 +305,7 @@ func (td *tableDeleter) deleteIndexScan(
 		// Update the resume start key for the next iteration.
 		resume.Key = rf.Key()
 	}
-	return resume, td.finalize(ctx)
+	return resume, td.finalizeForDelete(ctx)
 }
 
 func (td *tableDeleter) tableDesc() catalog.TableDescriptor {

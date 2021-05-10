@@ -804,6 +804,8 @@ type logicStatement struct {
 	expectErrCode string
 	// expected rows affected count. -1 to avoid testing this.
 	expectCount int64
+	// node on which to run the statment
+	nodeIdx int
 }
 
 // readSQL reads the lines of a SQL statement or query until the first blank
@@ -1969,13 +1971,23 @@ func (t *logicTest) processSubtest(
 				stmt.expectErrCode = m[1]
 				stmt.expectErr = m[2]
 			}
-			if len(fields) >= 3 && fields[1] == "count" {
-				n, err := strconv.ParseInt(fields[2], 10, 64)
-				if err != nil {
-					return err
+			if len(fields) >= 3 {
+				if fields[1] == "count" {
+					n, err := strconv.ParseInt(fields[2], 10, 64)
+					if err != nil {
+						return err
+					}
+					stmt.expectCount = n
 				}
-				stmt.expectCount = n
+				if strings.HasPrefix(fields[2], "nodeidx=") {
+					idx, err := strconv.ParseInt(strings.SplitN(fields[2], "=", 2)[1], 10, 64)
+					if err != nil {
+						return errors.Wrapf(err, "error parsing nodeidx")
+					}
+					stmt.nodeIdx = int(idx)
+				}
 			}
+
 			if _, err := stmt.readSQL(t, s, false /* allowSeparator */); err != nil {
 				return err
 			}
@@ -2555,7 +2567,22 @@ func (t *logicTest) execStatement(stmt logicStatement) (bool, error) {
 			t.outf("rewrote:\n%s\n", execSQL)
 		}
 	}
-	res, err := t.db.Exec(execSQL)
+	db := t.db
+	if stmt.nodeIdx != 0 {
+		addr := t.cluster.Server(stmt.nodeIdx).ServingSQLAddr()
+		pgURL, cleanupFunc := sqlutils.PGUrl(t.rootT, addr, "TestLogic", url.User(t.user))
+		defer cleanupFunc()
+		pgURL.Path = "test"
+
+		db = t.openDB(pgURL)
+		defer func() {
+			if err := db.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
+	}
+
+	res, err := db.Exec(execSQL)
 	if err == nil {
 		sqlutils.VerifyStatementPrettyRoundtrip(t.t(), stmt.sql)
 	}

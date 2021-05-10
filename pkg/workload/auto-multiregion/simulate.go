@@ -165,7 +165,7 @@ func main() {
 
 	// Create the "multi_region_stats" table.
 	if _, err := db.Exec(
-		"create table if not exists multi_region_stats (object string, region string, reads int, writes int, primary key (region, object))"); err != nil {
+		"CREATE TABLE IF NOT EXISTS multi_region_stats (object string, region string, reads int, writes int, primary key (region, object))"); err != nil {
 		log.Fatal(err)
 	}
 

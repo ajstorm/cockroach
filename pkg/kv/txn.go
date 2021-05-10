@@ -192,6 +192,11 @@ func (txn *Txn) DB() *DB {
 	return txn.db
 }
 
+// GatewayNodeID returns a transaction's gateway node ID.
+func (txn *Txn) GatewayNodeID() roachpb.NodeID {
+	return txn.gatewayNodeID
+}
+
 // Sender returns a transaction's TxnSender.
 func (txn *Txn) Sender() TxnSender {
 	txn.mu.Lock()

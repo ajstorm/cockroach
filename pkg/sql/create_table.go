@@ -360,6 +360,9 @@ func (n *createTableNode) startExec(params runParams) error {
 		}
 	}
 
+	// FIXME: This should be put somewhere more appropriate.
+	desc.AutoMultiRegionEnabled = n.dbDesc.IsAutoMultiRegionEnabled()
+
 	// Descriptor written to store here.
 	if err := params.p.createDescriptorWithID(
 		params.ctx,
@@ -510,7 +513,7 @@ func (n *createTableNode) startExec(params runParams) error {
 					if err != nil {
 						return err
 					}
-					if err := tw.finalize(params.ctx); err != nil {
+					if err := tw.finalize(params); err != nil {
 						return err
 					}
 					break

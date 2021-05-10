@@ -732,6 +732,7 @@ func (u *sqlSymUnion) objectNamePrefixList() tree.ObjectNamePrefixList {
 %token <str> MULTILINESTRING MULTILINESTRINGM MULTILINESTRINGZ MULTILINESTRINGZM
 %token <str> MULTIPOINT MULTIPOINTM MULTIPOINTZ MULTIPOINTZM
 %token <str> MULTIPOLYGON MULTIPOLYGONM MULTIPOLYGONZ MULTIPOLYGONZM
+%token <str> MULTIREGION
 
 %token <str> NAN NAME NAMES NATURAL NEVER NEXT NO NOCANCELQUERY NOCONTROLCHANGEFEED NOCONTROLJOB
 %token <str> NOCREATEDB NOCREATELOGIN NOCREATEROLE NOLOGIN NOMODIFYCLUSTERSETTING NO_INDEX_JOIN
@@ -839,6 +840,7 @@ func (u *sqlSymUnion) objectNamePrefixList() tree.ObjectNamePrefixList {
 %type <tree.Statement> alter_database_to_schema_stmt
 %type <tree.Statement> alter_database_add_region_stmt
 %type <tree.Statement> alter_database_drop_region_stmt
+%type <tree.Statement> alter_database_auto_multi_region_stmt
 %type <tree.Statement> alter_database_survival_goal_stmt
 %type <tree.Statement> alter_database_primary_region_stmt
 %type <tree.Statement> alter_zone_database_stmt
@@ -1039,6 +1041,8 @@ func (u *sqlSymUnion) objectNamePrefixList() tree.ObjectNamePrefixList {
 %type <tree.AlterTableCmds> alter_table_cmds
 %type <tree.AlterIndexCmd> alter_index_cmd
 %type <tree.AlterIndexCmds> alter_index_cmds
+
+%type <tree.Expr> auto_multi_region_state
 
 %type <tree.DropBehavior> opt_drop_behavior
 %type <tree.DropBehavior> opt_interleave_drop_behavior
@@ -1569,6 +1573,7 @@ alter_database_stmt:
 | alter_database_add_region_stmt
 | alter_database_drop_region_stmt
 | alter_database_survival_goal_stmt
+| alter_database_auto_multi_region_stmt
 | alter_database_primary_region_stmt
 // ALTER DATABASE has its error help token here because the ALTER DATABASE
 // prefix is spread over multiple non-terminals.
@@ -1620,6 +1625,15 @@ alter_database_survival_goal_stmt:
     $$.val = &tree.AlterDatabaseSurvivalGoal{
       Name: tree.Name($3),
       SurvivalGoal: $4.survivalGoal(),
+    }
+  }
+
+alter_database_auto_multi_region_stmt:
+  ALTER DATABASE database_name SET AUTOMATIC MULTIREGION auto_multi_region_state
+  {
+    $$.val = &tree.AlterDatabaseAutoMultiRegion{
+      Name: tree.Name($3),
+      State: $7.bool(),
     }
   }
 
@@ -2201,6 +2215,16 @@ opt_alter_column_using:
 | /* EMPTY */
   {
      $$.val = nil
+  }
+
+auto_multi_region_state:
+  ON
+  {
+    $$.val = true
+  }
+| OFF
+  {
+    $$.val = false
   }
 
 
@@ -5895,7 +5919,7 @@ for_schedules_clause:
 // %Help: PAUSE SCHEDULES - pause scheduled jobs
 // %Category: Misc
 // %Text:
-// PAUSE SCHEDULES <selectclause>
+// PAUSE SCHEDULES <selectclausew
 //   select clause: select statement returning schedule id to pause.
 // PAUSE SCHEDULE <scheduleID>
 // %SeeAlso: RESUME SCHEDULES, SHOW JOBS, CANCEL JOBS
@@ -12709,6 +12733,7 @@ unreserved_keyword:
 | MULTIPOLYGONM
 | MULTIPOLYGONZ
 | MULTIPOLYGONZM
+| MULTIREGION
 | MONTH
 | NAMES
 | NAN

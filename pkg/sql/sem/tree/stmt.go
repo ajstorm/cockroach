@@ -208,6 +208,19 @@ func (*AlterDatabaseDropRegion) StatementTag() string { return "ALTER DATABASE D
 func (*AlterDatabaseDropRegion) hiddenFromShowQueries() {}
 
 // StatementReturnType implements the Statement interface.
+func (*AlterDatabaseAutoMultiRegion) StatementReturnType() StatementReturnType { return DDL }
+
+// StatementType implements the Statement interface.
+func (*AlterDatabaseAutoMultiRegion) StatementType() StatementType { return TypeDDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterDatabaseAutoMultiRegion) StatementTag() string {
+	return "ALTER DATABASE AUTOMATIC MULTIREGION"
+}
+
+func (*AlterDatabaseAutoMultiRegion) hiddenFromShowQueries() {}
+
+// StatementReturnType implements the Statement interface.
 func (*AlterDatabasePrimaryRegion) StatementReturnType() StatementReturnType { return DDL }
 
 // StatementType implements the Statement interface.
@@ -1540,6 +1553,7 @@ func (n *AlterIndex) String() string                     { return AsString(n) }
 func (n *AlterDatabaseOwner) String() string             { return AsString(n) }
 func (n *AlterDatabaseAddRegion) String() string         { return AsString(n) }
 func (n *AlterDatabaseDropRegion) String() string        { return AsString(n) }
+func (n *AlterDatabaseAutoMultiRegion) String() string   { return AsString(n) }
 func (n *AlterDatabaseSurvivalGoal) String() string      { return AsString(n) }
 func (n *AlterDatabasePrimaryRegion) String() string     { return AsString(n) }
 func (n *AlterSchema) String() string                    { return AsString(n) }

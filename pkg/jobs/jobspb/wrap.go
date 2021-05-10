@@ -269,7 +269,7 @@ const (
 func (Type) SafeValue() {}
 
 // NumJobTypes is the number of jobs types.
-const NumJobTypes = 13
+const NumJobTypes = 14
 
 // MarshalJSONPB redacts sensitive sink URI parameters from ChangefeedDetails.
 func (p ChangefeedDetails) MarshalJSONPB(x *jsonpb.Marshaler) ([]byte, error) {

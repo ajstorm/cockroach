@@ -46,6 +46,14 @@ const (
 	PrimaryRegionNotSpecifiedName Name = ""
 )
 
+const (
+	// The auto multi-region table name
+	AutoMultiRegionTableName string = "crdb_internal_auto_multi_region"
+
+	// Schema in which the auto multi-region table resides
+	AutoMultiRegionSchemaName string = "public"
+)
+
 // Locality defines the locality for a given table.
 type Locality struct {
 	LocalityLevel LocalityLevel

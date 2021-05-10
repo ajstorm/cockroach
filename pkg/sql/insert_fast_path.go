@@ -302,7 +302,7 @@ func (n *insertFastPathNode) BatchedNext(params runParams) (bool, error) {
 		return false, err
 	}
 
-	if err := n.run.ti.finalize(params.ctx); err != nil {
+	if err := n.run.ti.finalize(params); err != nil {
 		return false, err
 	}
 	// Remember we're done for the next call to BatchedNext().

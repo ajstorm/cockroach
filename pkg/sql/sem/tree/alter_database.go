@@ -68,6 +68,27 @@ func (node *AlterDatabaseDropRegion) Format(ctx *FmtCtx) {
 	ctx.FormatNode(&node.Region)
 }
 
+// AlterDatabaseAutoMultiRegion represents an ALTER DATABASE AUTOMATIC MULTIREGION
+// statement.
+type AlterDatabaseAutoMultiRegion struct {
+	Name  Name
+	State bool
+}
+
+var _ Statement = &AlterDatabaseAutoMultiRegion{}
+
+// Format implements the NodeFormatter interface.
+func (node *AlterDatabaseAutoMultiRegion) Format(ctx *FmtCtx) {
+	ctx.WriteString("ALTER DATABASE ")
+	ctx.FormatNode(&node.Name)
+	ctx.WriteString(" SET AUTOMATIC MULTIREGION ")
+	if node.State {
+		ctx.WriteString("ON")
+	} else {
+		ctx.WriteString("OFF")
+	}
+}
+
 // AlterDatabasePrimaryRegion represents a ALTER DATABASE PRIMARY REGION ... statement.
 type AlterDatabasePrimaryRegion struct {
 	Name          Name

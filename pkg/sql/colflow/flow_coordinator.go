@@ -249,6 +249,7 @@ func (f *BatchFlowCoordinator) pushError(err error) execinfra.ConsumerStatus {
 	return f.output.PushBatch(nil /* batch */, meta)
 }
 
+
 // Run is the main loop of the coordinator. It runs the flow to completion and
 // then shuts it down.
 func (f *BatchFlowCoordinator) Run(ctx context.Context) {

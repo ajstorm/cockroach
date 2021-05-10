@@ -1,0 +1,86 @@
+# LogicTest: multiregion-9node-3region-3azs
+
+query TTTT colnames
+SHOW REGIONS
+----
+region          zones                   database_names  primary_region_of
+ap-southeast-2  {ap-az1,ap-az2,ap-az3}  {}              {}
+ca-central-1    {ca-az1,ca-az2,ca-az3}  {}              {}
+us-east-1       {us-az1,us-az2,us-az3}  {}              {}
+
+statement ok
+CREATE DATABASE db PRIMARY REGION "ca-central-1" REGIONS "ap-southeast-2", "us-east-1";
+USE db
+
+query TTTTIT
+SHOW TABLES
+----
+
+statement ok
+ALTER DATABASE db SET AUTOMATIC MULTIREGION ON
+
+query TTTTIT
+SHOW TABLES
+----
+public  crdb_internal_auto_multi_region  table  root  0  REGIONAL BY ROW AS crdb_region
+
+statement ok
+CREATE TABLE t (i INT)
+
+query T nodeidx=0
+SELECT gateway_region()
+----
+ap-southeast-2
+
+statement ok
+INSERT INTO t VALUES (1975)
+
+query TTII colnames
+SELECT crdb_region, tab, reads, writes FROM crdb_internal_auto_multi_region
+----
+crdb_region     tab  reads  writes
+ap-southeast-2  t    0      1
+
+query T nodeidx=6
+SELECT gateway_region()
+----
+us-east-1
+
+# FIXME: The "USE" below is required because the nodeidx on statements
+#  doesn't properly setup the connection to use the original database.  This
+#  should be corrected.
+statement ok nodeidx=6
+USE db;
+INSERT INTO t VALUES (1980)
+
+query TTII colnames
+SELECT crdb_region, tab, reads, writes FROM crdb_internal_auto_multi_region
+----
+crdb_region     tab  reads  writes
+ap-southeast-2  t    0      1
+us-east-1       t    0      1
+
+query I nodeidx=0
+USE db;
+SELECT i from t
+----
+1975
+1980
+
+query I nodeidx=3
+USE db;
+SELECT i from t
+----
+1975
+1980
+
+query I nodeidx=6
+USE db;
+SELECT i from t
+----
+1975
+1980
+
+query TTII colnames
+SELECT crdb_region, tab, reads, writes FROM crdb_internal_auto_multi_region
+----

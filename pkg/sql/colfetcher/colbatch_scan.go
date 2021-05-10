@@ -12,6 +12,11 @@ package colfetcher
 
 import (
 	"context"
+	"fmt"
+	"github.com/cockroachdb/cockroach/pkg/gossip"
+	"github.com/cockroachdb/cockroach/pkg/kv"
+	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
+	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 	"sync"
 	"time"
 
@@ -130,6 +135,10 @@ func (s *ColBatchScan) DrainMeta() []execinfrapb.ProducerMetadata {
 	if trace := execinfra.GetTraceData(s.Ctx); trace != nil {
 		trailingMeta = append(trailingMeta, execinfrapb.ProducerMetadata{TraceData: trace})
 	}
+
+	// Update the auto multi-region stats
+	s.updateAutoMultiRegionStatsForRead()
+
 	return trailingMeta
 }
 
@@ -283,6 +292,98 @@ func initCRowFetcher(
 	}
 
 	return index, isSecondaryIndex, nil
+}
+
+// FIXME: Not sure if this is the best approach.  Putting this in for now and
+//  will have to revisit later.
+// FIXME: Also need to find a long-term home for this.
+func (s *ColBatchScan) getLocalityForNode(id roachpb.NodeID) (roachpb.Locality, error) {
+	var loc roachpb.Locality
+	// FIXME: This is a deprecated method, need to find an alternative approach
+	// here.
+	g, err := s.flowCtx.Cfg.Gossip.OptionalErr(47899)
+	if err != nil {
+		return loc, err
+	}
+
+	if err := g.IterateInfos(gossip.KeyNodeIDPrefix, func(key string, i gossip.Info) error {
+		bytes, err := i.Value.GetBytes()
+		if err != nil {
+			return errors.NewAssertionErrorWithWrappedErrf(err,
+				"failed to extract bytes for key %q", key)
+		}
+
+		var d roachpb.NodeDescriptor
+		if err := protoutil.Unmarshal(bytes, &d); err != nil {
+			return errors.NewAssertionErrorWithWrappedErrf(err,
+				"failed to parse value for key %q", key)
+		}
+
+		// Don't use node descriptors with NodeID 0, because that's meant to
+		// indicate that the node has been removed from the cluster.
+		if d.NodeID == id {
+			loc = d.Locality
+		}
+		return nil
+	}); err != nil {
+		return loc, err
+	}
+	return loc, nil
+}
+
+
+// FIXME: For some reason, the update in here isn't propagating through.
+//  Possibly because the transaction never commits???
+func (s *ColBatchScan) updateAutoMultiRegionStatsForRead () error {
+	desc := s.rf.table.desc
+	ctx := s.Ctx
+	txn := s.flowCtx.Txn
+
+	if desc.IsAutoMultiRegionEnabled() &&
+		desc.GetName() != tree.AutoMultiRegionTableName &&
+		// FIXME: Why do we sometimes get in here with a leaf txn?
+		//  This is a pretty big problem, as we're only getting half accounting
+		//  now!!!
+		txn.Type() == kv.RootTxn {
+		loc, err := s.getLocalityForNode(txn.GatewayNodeID())
+		if err != nil {
+			colexecerror.InternalError(err)
+		}
+
+		region, found := loc.Find("region")
+
+		// If we can't find a region on the gateway node, there's no reporting to
+		// do here.
+		if found {
+			autoMultiRegionStatement := fmt.Sprintf(
+				`INSERT INTO %s.%s (crdb_region, tab, reads, writes) VALUES ('%s', '%s', %d, 0) ON CONFLICT (crdb_region, tab) DO UPDATE SET reads = %q.reads + %d`,
+				tree.AutoMultiRegionSchemaName,
+				tree.AutoMultiRegionTableName,
+				region,
+				desc.GetName(),
+				s.GetRowsRead(),
+				tree.AutoMultiRegionTableName,
+				s.GetRowsRead(),
+			)
+
+			// FIXME: This should ideally use a separate transaction, and be run in the
+			//  background.
+			//  Use CreateAdoptableJobWithTxn()? CreateStartableJobWithTxn()?
+			if _, err := s.flowCtx.Cfg.Executor.ExecEx(
+				ctx,
+				"update-auto-multi-region-table",
+				txn,
+				sessiondata.InternalExecutorOverride{
+					User:	  s.flowCtx.EvalCtx.SessionData.User(),
+					Database: s.flowCtx.EvalCtx.SessionData.Database,
+				},
+				autoMultiRegionStatement,
+			); err != nil {
+				colexecerror.InternalError(err)
+			}
+		}
+	}
+	return nil
 }
 
 // Release implements the execinfra.Releasable interface.

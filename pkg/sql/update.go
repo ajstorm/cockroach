@@ -189,7 +189,7 @@ func (u *updateNode) BatchedNext(params runParams) (bool, error) {
 	}
 
 	if lastBatch {
-		if err := u.run.tu.finalize(params.ctx); err != nil {
+		if err := u.run.tu.finalize(params); err != nil {
 			return false, err
 		}
 		// Remember we're done for the next call to BatchedNext().

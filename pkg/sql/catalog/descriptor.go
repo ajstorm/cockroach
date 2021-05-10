@@ -178,6 +178,7 @@ type DatabaseDescriptor interface {
 	ForEachSchemaInfo(func(id descpb.ID, name string, isDropped bool) error) error
 	GetSchemaID(name string) descpb.ID
 	GetNonDroppedSchemaName(schemaID descpb.ID) string
+	IsAutoMultiRegionEnabled() bool
 }
 
 // TableDescriptor is an interface around the table descriptor types.
@@ -349,6 +350,8 @@ type TableDescriptor interface {
 	IsLocalityGlobal() bool
 	GetRegionalByTableRegion() (descpb.RegionName, error)
 	GetRegionalByRowTableRegionColumnName() (tree.Name, error)
+
+	IsAutoMultiRegionEnabled() bool
 }
 
 // TypeDescriptor will eventually be called typedesc.Descriptor.

@@ -960,6 +960,7 @@ unreserved_keyword ::=
 	| 'MULTIPOLYGONM'
 	| 'MULTIPOLYGONZ'
 	| 'MULTIPOLYGONZM'
+	| 'MULTIREGION'
 	| 'MONTH'
 	| 'NAMES'
 	| 'NAN'
@@ -1286,6 +1287,7 @@ alter_database_stmt ::=
 	| alter_database_add_region_stmt
 	| alter_database_drop_region_stmt
 	| alter_database_survival_goal_stmt
+	| alter_database_auto_multi_region_stmt
 	| alter_database_primary_region_stmt
 
 alter_range_stmt ::=
@@ -1757,6 +1759,9 @@ alter_database_drop_region_stmt ::=
 
 alter_database_survival_goal_stmt ::=
 	'ALTER' 'DATABASE' database_name survival_goal_clause
+
+alter_database_auto_multi_region_stmt ::=
+	'ALTER' 'DATABASE' database_name 'SET' 'AUTOMATIC' 'MULTIREGION' auto_multi_region_state
 
 alter_database_primary_region_stmt ::=
 	'ALTER' 'DATABASE' database_name primary_region_clause
@@ -2244,6 +2249,10 @@ region_name ::=
 survival_goal_clause ::=
 	'SURVIVE' opt_equal 'REGION' 'FAILURE'
 	| 'SURVIVE' opt_equal 'ZONE' 'FAILURE'
+
+auto_multi_region_state ::=
+	'ON'
+	| 'OFF'
 
 primary_region_clause ::=
 	'PRIMARY' 'REGION' opt_equal region_name

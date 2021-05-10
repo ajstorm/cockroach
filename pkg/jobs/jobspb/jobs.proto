@@ -645,6 +645,11 @@ message MigrationDetails {
   clusterversion.ClusterVersion cluster_version = 1;
 }
 
+message AutoMultiRegionDetails {
+  string mutation = 1;
+  string database = 2;
+}
+
 message MigrationProgress {
 
 }
@@ -692,6 +697,7 @@ message Payload {
     StreamIngestionDetails streamIngestion = 23;
     NewSchemaChangeDetails newSchemaChange = 24;
     MigrationDetails migration = 25;
+    AutoMultiRegionDetails autoMultiRegion = 27;
   }
   reserved 26;
 
@@ -742,6 +748,7 @@ enum Type {
   STREAM_INGESTION = 10 [(gogoproto.enumvalue_customname) = "TypeStreamIngestion"];
   NEW_SCHEMA_CHANGE = 11 [(gogoproto.enumvalue_customname) = "TypeNewSchemaChange"];
   MIGRATION = 12 [(gogoproto.enumvalue_customname) = "TypeMigration"];
+  AUTO_MULTI_REGION = 13 [(gogoproto.enumvalue_customname) = "TypeAutoMultiRegion"];
 }
 
 message Job {
