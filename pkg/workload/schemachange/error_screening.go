@@ -173,7 +173,7 @@ func colIsPrimaryKey(tx *pgx.Tx, tableName *tree.TableName, columnName string) (
 // valuesViolateUniqueConstraints determines if any unique constraints (including primary constraints)
 // will be violated upon inserting the specified rows into the specified table.
 func violatesUniqueConstraints(
-	tx *pgx.Tx, tableName *tree.TableName, columns []string, rows [][]string,
+	tx *pgx.Tx, tableName *tree.TableName, columns []string, rows [][]string, debugLog *atomicLog,
 ) (bool, error) {
 
 	if len(rows) == 0 {
@@ -227,7 +227,7 @@ func violatesUniqueConstraints(
 		// will be inserted into the database.
 		previousRows := map[string]bool{}
 		for _, row := range rows {
-			violation, err := violatesUniqueConstraintsHelper(tx, tableName, columns, constraint, row, previousRows)
+			violation, err := violatesUniqueConstraintsHelper(tx, tableName, columns, constraint, row, previousRows, debugLog)
 			if err != nil {
 				return false, err
 			}
@@ -247,6 +247,7 @@ func violatesUniqueConstraintsHelper(
 	constraint []string,
 	row []string,
 	previousRows map[string]bool,
+	debugLog *atomicLog,
 ) (bool, error) {
 
 	// Put values to be inserted into a column name to value map to simplify lookups.
@@ -266,7 +267,7 @@ func violatesUniqueConstraintsHelper(
 	for _, column := range constraint {
 
 		// Null values are not checked because unique constraints do not apply to null values.
-		if columnsToValues[column] != "NULL" {
+		if columnsToValues[column] != "NULL" && columnsToValues[column] != "" {
 			if atLeastOneNonNullValue {
 				query.WriteString(fmt.Sprintf(` AND %s = %s`, column, columnsToValues[column]))
 			} else {
@@ -300,6 +301,8 @@ func violatesUniqueConstraintsHelper(
 		return false, err
 	}
 	if exists {
+		logMessage := fmt.Sprintf("expecting unique constraint violation using query: %s", queryString)
+		debugLog.printLn(logMessage)
 		return true, nil
 	}
 
@@ -323,7 +326,7 @@ func scanStringArrayRows(tx *pgx.Tx, query string, args ...interface{}) ([][]str
 		results = append(results, columnNames)
 	}
 
-	return results, nil
+	return results, rows.Err()
 }
 
 func indexExists(tx *pgx.Tx, tableName *tree.TableName, indexName string) (bool, error) {
@@ -507,7 +510,7 @@ func rowsSatisfyFkConstraint(
 
 // violatesFkConstraints checks if the rows to be inserted will result in a foreign key violation.
 func violatesFkConstraints(
-	tx *pgx.Tx, tableName *tree.TableName, columns []string, rows [][]string,
+	tx *pgx.Tx, tableName *tree.TableName, columns []string, rows [][]string, debugLog *atomicLog,
 ) (bool, error) {
 	fkConstraints, err := scanStringArrayRows(tx, fmt.Sprintf(`
 		SELECT array[parent.table_schema, parent.table_name, parent.column_name, child.column_name]
@@ -560,7 +563,7 @@ func violatesFkConstraints(
 				continue
 			}
 
-			violation, err := violatesFkConstraintsHelper(tx, columnNameToIndexMap, parentTableSchema, parentTableName, parentColumnName, childColumnName, row)
+			violation, err := violatesFkConstraintsHelper(tx, columnNameToIndexMap, parentTableSchema, parentTableName, parentColumnName, childColumnName, row, debugLog)
 			if err != nil {
 				return false, err
 			}
@@ -581,6 +584,7 @@ func violatesFkConstraintsHelper(
 	columnNameToIndexMap map[string]int,
 	parentTableSchema, parentTableName, parentColumn, childColumn string,
 	row []string,
+	debugLog *atomicLog,
 ) (bool, error) {
 
 	// If the value to insert in the child column is NULL and the column default is NULL, then it is not possible to have a fk violation.
@@ -589,12 +593,23 @@ func violatesFkConstraintsHelper(
 		return false, nil
 	}
 
-	return scanBool(tx, fmt.Sprintf(`
+	checkStmt :=fmt.Sprintf(`
 	SELECT NOT EXISTS (
 	    SELECT * from %s.%s
 	    WHERE %s = %s
 	)
-	`, parentTableSchema, parentTableName, parentColumn, childValue))
+	`, parentTableSchema, parentTableName, parentColumn, childValue)
+
+	violation, err := scanBool(tx, checkStmt)
+	if err != nil {
+		return false, nil
+	}
+	if violation {
+		logMessage := fmt.Sprintf("expecting FK constraint violation using query: %s", checkStmt)
+		debugLog.printLn(logMessage)
+	}
+
+	return violation, err
 }
 
 func columnIsInDroppingIndex(

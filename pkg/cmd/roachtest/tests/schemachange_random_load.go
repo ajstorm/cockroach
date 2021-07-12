@@ -45,12 +45,13 @@ func registerSchemaChangeRandomLoad(r registry.Registry) {
 		),
 		// This is set while development is still happening on the workload and we
 		// fix (or bypass) minor schema change bugs that are discovered.
+		// FIXME: I think it may be time to remove this.
 		NonReleaseBlocker: true,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
 			maxOps := 5000
 			concurrency := 20
 			if c.IsLocal() {
-				maxOps = 200
+				maxOps = 2000
 				concurrency = 2
 			}
 			runSchemaChangeRandomLoad(ctx, t, c, maxOps, concurrency)

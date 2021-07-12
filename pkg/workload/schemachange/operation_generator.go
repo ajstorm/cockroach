@@ -43,6 +43,7 @@ type operationGeneratorParams struct {
 	sequenceOwnedByPct int
 	fkParentInvalidPct int
 	fkChildInvalidPct  int
+	debugLog           *atomicLog
 }
 
 // The OperationBuilder has the sole responsibility of generating ops
@@ -221,7 +222,7 @@ var opWeights = []int{
 	setColumnNotNull:        1,
 	setColumnType:           0, // Disabled and tracked with #66662.
 	survive:                 1,
-	insertRow:               0,
+	insertRow:               5,
 	validate:                2, // validate twice more often
 }
 
@@ -1977,6 +1978,21 @@ func (og *operationGenerator) setColumnNotNull(tx *pgx.Tx) (string, error) {
 	if constraintBeingAdded {
 		og.expectedExecErrors.add(pgcode.ObjectNotInPrerequisiteState)
 	}
+	columnIsComputed, err := columnIsComputed(tx, tableName, columnName)
+	if err != nil {
+		return "", err
+	}
+	if columnIsComputed {
+		// Avoid adding NOT NULL constraints on computed columns as it makes it
+		// difficult for the insert path to properly insert valid rows.  This is
+		// to handle the case where c2 is computed based on c1 and c1 is
+		// nullable. If we add a NOT NULL constraint on c2, the insert path has
+		// no way to easily know that that constraint exists and must be
+		// respected through c1. We could properly handle this, but it would
+		// mean further complicating the insertRow path, which is undesirable.
+		og.expectedExecErrors.add(pgcode.UndefinedColumn)
+		return fmt.Sprintf(`ALTER TABLE %s ALTER COLUMN IrrelevantColumnName SET NOT NULL`, tableName), nil
+	}
 
 	if !columnExists {
 		og.expectedExecErrors.add(pgcode.UndefinedColumn)
@@ -2139,7 +2155,11 @@ func (og *operationGenerator) insertRow(tx *pgx.Tx) (string, error) {
 	for i := 0; i < numRows; i++ {
 		var row []string
 		for _, col := range cols {
-			d := randgen.RandDatum(og.params.rng, col.typ, col.nullable)
+			// TODO(ajstorm): disable null column value generation for the time
+			//  being. Disabled because null column values cause problems with
+			//  generated columns.
+			d := randgen.RandDatum(og.params.rng, col.typ, false)
+//			d := randgen.RandDatum(og.params.rng, col.typ, col.nullable)
 			row = append(row, tree.AsStringWithFlags(d, tree.FmtParsable))
 		}
 
@@ -2148,14 +2168,14 @@ func (og *operationGenerator) insertRow(tx *pgx.Tx) (string, error) {
 
 	// Verify if the new row will violate unique constraints by checking the constraints and
 	// existing rows in the database.
-	uniqueConstraintViolation, err := violatesUniqueConstraints(tx, tableName, colNames, rows)
+	uniqueConstraintViolation, err := violatesUniqueConstraints(tx, tableName, colNames, rows, og.params.debugLog)
 	if err != nil {
 		return "", err
 	}
 
 	// Verify if the new row will violate fk constraints by checking the constraints and rows
 	// in the database.
-	foreignKeyViolation, err := violatesFkConstraints(tx, tableName, colNames, rows)
+	foreignKeyViolation, err := violatesFkConstraints(tx, tableName, colNames, rows, og.params.debugLog)
 	if err != nil {
 		return "", err
 	}

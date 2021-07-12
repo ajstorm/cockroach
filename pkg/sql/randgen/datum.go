@@ -12,6 +12,7 @@ package randgen
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"math/big"
 	"math/bits"
@@ -184,9 +185,18 @@ func RandDatumWithNullChance(rng *rand.Rand, typ *types.T, nullChance int) tree.
 		} else {
 			length = rng.Intn(10)
 		}
+		// If we're not allowed NULLs, ensure that length isn't 0.
+		if length == 0 && nullChance == 0 {
+			length = 1
+		}
 		p := make([]byte, length)
 		for i := range p {
 			p[i] = byte(1 + rng.Intn(127))
+		}
+		sp := string(p)
+		if nullChance == 0 && sp == "" {
+			panicString := fmt.Sprintf("generated NULL value mistakenly %x",sp)
+			panic(panicString)
 		}
 		if typ.Oid() == oid.T_name {
 			return tree.NewDName(string(p))
@@ -223,6 +233,10 @@ func RandDatumWithNullChance(rng *rand.Rand, typ *types.T, nullChance int) tree.
 	case types.OidFamily:
 		return tree.NewDOid(tree.DInt(rng.Uint32()))
 	case types.UnknownFamily:
+		if nullChance == 0 {
+			// Bad news.  Can't return NULL here.  Must panic.
+			panic(errors.AssertionFailedf("Unable to return NULL for type %v", typ))
+		}
 		return tree.DNull
 	case types.ArrayFamily:
 		return RandArray(rng, typ, 0)

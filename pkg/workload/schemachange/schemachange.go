@@ -98,6 +98,7 @@ var schemaChangeMeta = workload.Meta{
 			`Percentage of times to intentionally cause errors due to either existing or non-existing names`)
 		s.flags.IntVar(&s.enumPct, `enum-pct`, defaultEnumPct,
 			`Percentage of times when picking a type that an enum type is picked`)
+		// FIXME: How to set this externally?
 		s.flags.IntVarP(&s.verbose, `verbose`, `v`, 0, ``)
 		s.flags.BoolVarP(&s.dryRun, `dry-run`, `n`, false, ``)
 		s.flags.IntVar(&s.maxSourceTables, `max-source-tables`, defaultMaxSourceTables,
@@ -190,6 +191,7 @@ func (s *schemaChange) Ops(
 			sequenceOwnedByPct: s.sequenceOwnedByPct,
 			fkParentInvalidPct: s.fkParentInvalidPct,
 			fkChildInvalidPct:  s.fkChildInvalidPct,
+			debugLog: 			stdoutLog,
 		}
 
 		w := &schemaChangeWorker{
