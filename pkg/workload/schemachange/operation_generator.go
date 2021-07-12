@@ -43,6 +43,7 @@ type operationGeneratorParams struct {
 	sequenceOwnedByPct int
 	fkParentInvalidPct int
 	fkChildInvalidPct  int
+	debugLog           *atomicLog
 }
 
 // The OperationBuilder has the sole responsibility of generating ops
@@ -221,7 +222,7 @@ var opWeights = []int{
 	setColumnNotNull:        1,
 	setColumnType:           0, // Disabled and tracked with #66662.
 	survive:                 1,
-	insertRow:               0,
+	insertRow:               5,
 	validate:                2, // validate twice more often
 }
 
@@ -2148,7 +2149,7 @@ func (og *operationGenerator) insertRow(tx *pgx.Tx) (string, error) {
 
 	// Verify if the new row will violate unique constraints by checking the constraints and
 	// existing rows in the database.
-	uniqueConstraintViolation, err := violatesUniqueConstraints(tx, tableName, colNames, rows)
+	uniqueConstraintViolation, err := violatesUniqueConstraints(tx, tableName, colNames, rows, og.params.debugLog)
 	if err != nil {
 		return "", err
 	}

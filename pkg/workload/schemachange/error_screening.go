@@ -173,8 +173,9 @@ func colIsPrimaryKey(tx *pgx.Tx, tableName *tree.TableName, columnName string) (
 // valuesViolateUniqueConstraints determines if any unique constraints (including primary constraints)
 // will be violated upon inserting the specified rows into the specified table.
 func violatesUniqueConstraints(
-	tx *pgx.Tx, tableName *tree.TableName, columns []string, rows [][]string,
+	tx *pgx.Tx, tableName *tree.TableName, columns []string, rows [][]string, debugLog *atomicLog,
 ) (bool, error) {
+	debugLog.printLn("In violatesUniqueConstraints")
 
 	if len(rows) == 0 {
 		return false, fmt.Errorf("violatesUniqueConstraints: no rows provided")
@@ -227,7 +228,7 @@ func violatesUniqueConstraints(
 		// will be inserted into the database.
 		previousRows := map[string]bool{}
 		for _, row := range rows {
-			violation, err := violatesUniqueConstraintsHelper(tx, tableName, columns, constraint, row, previousRows)
+			violation, err := violatesUniqueConstraintsHelper(tx, tableName, columns, constraint, row, previousRows, debugLog)
 			if err != nil {
 				return false, err
 			}
@@ -247,6 +248,7 @@ func violatesUniqueConstraintsHelper(
 	constraint []string,
 	row []string,
 	previousRows map[string]bool,
+	debugLog *atomicLog,
 ) (bool, error) {
 
 	// Put values to be inserted into a column name to value map to simplify lookups.
@@ -266,7 +268,7 @@ func violatesUniqueConstraintsHelper(
 	for _, column := range constraint {
 
 		// Null values are not checked because unique constraints do not apply to null values.
-		if columnsToValues[column] != "NULL" {
+		if columnsToValues[column] != "NULL" && columnsToValues[column] != "" {
 			if atLeastOneNonNullValue {
 				query.WriteString(fmt.Sprintf(` AND %s = %s`, column, columnsToValues[column]))
 			} else {
@@ -300,6 +302,9 @@ func violatesUniqueConstraintsHelper(
 		return false, err
 	}
 	if exists {
+		// FIXME: find some way to log what constraint is failing here...
+		logMessage := fmt.Sprintf("expecting unique constraint violation using query: %s", queryString)
+		debugLog.printLn(logMessage)
 		return true, nil
 	}
 

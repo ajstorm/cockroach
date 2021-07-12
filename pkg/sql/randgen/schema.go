@@ -362,23 +362,41 @@ func randComputedColumnTableDef(
 	newDef.Computed.Computed = true
 	newDef.Computed.Virtual = (rng.Intn(2) == 0)
 
+	var op tree.BinaryOperator
 	if rng.Intn(2) == 0 {
 		// Try to find a set of numeric columns with the same type; the computed
-		// expression will be of the form "a+b+c".
+		// expression will be of the form "a % b % c".
 		var cols []*tree.ColumnTableDef
 		var fam types.Family
+		var wid int32
 		for _, idx := range rng.Perm(len(normalColDefs)) {
 			x := normalColDefs[idx]
 			xFam := x.Type.(*types.T).Family()
+			xWid := x.Type.(*types.T).Width()
 
 			if len(cols) == 0 {
 				switch xFam {
 				case types.IntFamily, types.FloatFamily, types.DecimalFamily:
 					fam = xFam
+					wid = xWid
 					cols = append(cols, x)
 				}
-			} else if fam == xFam {
+			} else if fam == xFam && wid == xWid {
 				cols = append(cols, x)
+				switch xFam {
+				case types.IntFamily:
+					// Use XOR here to ensure that we don't overflow or
+					// underflow the INT type.
+					op = tree.MakeBinaryOperator(tree.Bitand)
+				case types.FloatFamily, types.DecimalFamily:
+					// A bit risky to use plus here, but since these
+					// types don't support bitwise operations, it's
+					// the best we can do.
+					// FIXME: We may want to reduce the likelihood of overflow
+					//  by changing the number of operations below to two for
+					//  these types.
+					op = tree.MakeBinaryOperator(tree.Plus)
+				}
 				if len(cols) > 1 && rng.Intn(2) == 0 {
 					break
 				}
@@ -398,7 +416,7 @@ func randComputedColumnTableDef(
 			expr = tree.NewUnresolvedName(string(cols[0].Name))
 			for _, x := range cols[1:] {
 				expr = &tree.BinaryExpr{
-					Operator: tree.MakeBinaryOperator(tree.Plus),
+					Operator: op,
 					Left:     expr,
 					Right:    tree.NewUnresolvedName(string(x.Name)),
 				}
@@ -425,14 +443,27 @@ func randComputedColumnTableDef(
 	nullOk := newDef.Nullable.Nullability != tree.NotNull
 
 	switch xTyp.Family() {
-	case types.IntFamily, types.FloatFamily, types.DecimalFamily:
+	case types.IntFamily:
+		newDef.Type = xTyp
+		newDef.Computed.Expr = &tree.BinaryExpr{
+			// Use AND here, because plus/minus can cause overflow/undeflow
+			// issues.
+			Operator: tree.MakeBinaryOperator(tree.Bitand),
+			Left:     tree.NewUnresolvedName(string(x.Name)),
+			// Have to set nullOk to false here, to prevent us trying to
+			// perform an AND with a NULL value.
+			Right:    RandDatum(rng, xTyp, false),
+		}
+	case types.FloatFamily, types.DecimalFamily:
 		newDef.Type = xTyp
 		newDef.Computed.Expr = &tree.BinaryExpr{
 			Operator: tree.MakeBinaryOperator(tree.Plus),
 			Left:     tree.NewUnresolvedName(string(x.Name)),
-			Right:    RandDatum(rng, xTyp, nullOk),
+			// Have to set nullOk to false here, to prevent us trying to
+			// perform an plus operation with a NULL value.
+			// FIXME: this might not be necessary.
+			Right:    RandDatum(rng, xTyp, false),
 		}
-
 	case types.StringFamily:
 		newDef.Type = types.String
 		newDef.Computed.Expr = &tree.FuncExpr{

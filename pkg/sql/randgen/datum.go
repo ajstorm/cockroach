@@ -223,6 +223,10 @@ func RandDatumWithNullChance(rng *rand.Rand, typ *types.T, nullChance int) tree.
 	case types.OidFamily:
 		return tree.NewDOid(tree.DInt(rng.Uint32()))
 	case types.UnknownFamily:
+		if nullChance == 0 {
+			// Bad news.  Can't return NULL here.  Must panic.
+			panic(errors.AssertionFailedf("Unable to return NULL for type %v", typ))
+		}
 		return tree.DNull
 	case types.ArrayFamily:
 		return RandArray(rng, typ, 0)
