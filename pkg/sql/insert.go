@@ -14,11 +14,13 @@ import (
 	"context"
 	"sync"
 
+	"github.com/cockroachdb/cockroach/pkg/auto_multi_region"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/colinfo"
 	"github.com/cockroachdb/cockroach/pkg/sql/row"
 	"github.com/cockroachdb/cockroach/pkg/sql/rowcontainer"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 )
 
 var insertNodePool = sync.Pool{
@@ -212,6 +214,7 @@ func (n *insertNode) BatchedNext(params runParams) (bool, error) {
 
 	// Now consume/accumulate the rows for this batch.
 	lastBatch := false
+	rows := make([]tree.Datums, 0, n.run.ti.currentBatchSize)
 	for {
 		if err := params.p.cancelChecker.Check(); err != nil {
 			return false, err
@@ -234,7 +237,15 @@ func (n *insertNode) BatchedNext(params runParams) (bool, error) {
 
 		// Process the insertion for the current source row, potentially
 		// accumulating the result row for later.
-		if err := n.run.processSourceRow(params, n.source.Values()); err != nil {
+		row := n.source.Values()
+		if n.run.ti.tableDesc().IsAutoMultiRegionEnabled() {
+			r := make(tree.Datums, len(row))
+			for i := range row {
+				r[i] = row[i]
+			}
+			rows = append(rows, r)
+		}
+		if err := n.run.processSourceRow(params, row); err != nil {
 			return false, err
 		}
 
@@ -255,18 +266,31 @@ func (n *insertNode) BatchedNext(params runParams) (bool, error) {
 		}
 	}
 
+	// FIXME: It would be nice if we didn't have to do this on every batch.
+	//  To make this change we'd have to store the rows for all batches and only
+	//  make the call to update the stats on lastbatch.  Not sure if this is
+	//  even feasible for large batches.
+
+	// Update auto-multi-region stats.
+	wr := auto_multi_region.CreateUpdateRecordForWrite(
+		params.ctx,
+		n.run.ti.tableDesc(),
+		params.EvalContext(),
+		params.ExecCfg().JobRegistry,
+		params.ExecCfg().Gossip,
+		params.EvalContext().Txn.GatewayNodeID(),
+		rows,
+		int64(n.run.ti.currentBatchSize),
+		n.run.insertCols,
+	)
+	if err := wr.UpdateForWrite(); err != nil {
+		// Log and eat the error to prevent auto-multi-region statistics
+		// collection from generating user errors.
+		log.VEventf(params.ctx, 1, "Couldn't create auto-multi-region job. Error: %v", err)
+	}
+
 	if lastBatch {
 		n.run.ti.setRowsWrittenLimit(params.extendedEvalCtx.SessionData())
-
-		// Before we commit, do any auto multi-region work required.
-		//		if err := updateAutoMultiRegionStatsForWrite(
-		//			n.run.ti.tableDesc(),
-		//			params,
-		//			n.run.ti.txn,
-		//			n.run.ti.currentBatchSize,
-		//		); err != nil {
-		//			return false, err
-		//		}
 
 		if err := n.run.ti.finalize(params); err != nil {
 			return false, err

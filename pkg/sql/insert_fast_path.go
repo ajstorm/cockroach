@@ -271,17 +271,14 @@ func (n *insertFastPathNode) BatchedNext(params runParams) (bool, error) {
 
 	// The fast path node does everything in one batch.
 
-	amrRows := make([]tree.Datums, 0, len(n.input))
+	rows := make([]tree.Datums, 0, len(n.input))
 	for rowIdx, tupleRow := range n.input {
 		if err := params.p.cancelChecker.Check(); err != nil {
 			return false, err
 		}
 		inputRow := n.run.inputRow(rowIdx)
 
-		// FIXME: we need to place the generated columns in here...
-		//  adam, you're an idiot.  There's no region column here, we need
-		//  to deduce that with the gateway region, moron!
-		amrRows = append(amrRows, inputRow)
+		rows = append(rows, inputRow)
 		for col, typedExpr := range tupleRow {
 			var err error
 			inputRow[col], err = typedExpr.Eval(params.EvalContext())
@@ -321,7 +318,7 @@ func (n *insertFastPathNode) BatchedNext(params runParams) (bool, error) {
 		params.ExecCfg().JobRegistry,
 		params.ExecCfg().Gossip,
 		params.EvalContext().Txn.GatewayNodeID(),
-		amrRows,
+		rows,
 		int64(n.run.ti.currentBatchSize),
 		n.run.insertCols,
 	)
