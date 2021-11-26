@@ -94,69 +94,70 @@ const CrdbInternalName = catconstants.CRDBInternalSchemaName
 var crdbInternal = virtualSchema{
 	name: CrdbInternalName,
 	tableDefs: map[descpb.ID]virtualSchemaDef{
-		catconstants.CrdbInternalBackwardDependenciesTableID:      crdbInternalBackwardDependenciesTable,
-		catconstants.CrdbInternalBuildInfoTableID:                 crdbInternalBuildInfoTable,
-		catconstants.CrdbInternalBuiltinFunctionsTableID:          crdbInternalBuiltinFunctionsTable,
-		catconstants.CrdbInternalClusterContendedIndexesViewID:    crdbInternalClusterContendedIndexesView,
-		catconstants.CrdbInternalClusterContendedKeysViewID:       crdbInternalClusterContendedKeysView,
-		catconstants.CrdbInternalClusterContendedTablesViewID:     crdbInternalClusterContendedTablesView,
-		catconstants.CrdbInternalClusterContentionEventsTableID:   crdbInternalClusterContentionEventsTable,
-		catconstants.CrdbInternalClusterDistSQLFlowsTableID:       crdbInternalClusterDistSQLFlowsTable,
-		catconstants.CrdbInternalClusterQueriesTableID:            crdbInternalClusterQueriesTable,
-		catconstants.CrdbInternalClusterTransactionsTableID:       crdbInternalClusterTxnsTable,
-		catconstants.CrdbInternalClusterSessionsTableID:           crdbInternalClusterSessionsTable,
-		catconstants.CrdbInternalClusterSettingsTableID:           crdbInternalClusterSettingsTable,
-		catconstants.CrdbInternalCreateSchemaStmtsTableID:         crdbInternalCreateSchemaStmtsTable,
-		catconstants.CrdbInternalCreateStmtsTableID:               crdbInternalCreateStmtsTable,
-		catconstants.CrdbInternalCreateTypeStmtsTableID:           crdbInternalCreateTypeStmtsTable,
-		catconstants.CrdbInternalDatabasesTableID:                 crdbInternalDatabasesTable,
-		catconstants.CrdbInternalFeatureUsageID:                   crdbInternalFeatureUsage,
-		catconstants.CrdbInternalForwardDependenciesTableID:       crdbInternalForwardDependenciesTable,
-		catconstants.CrdbInternalGossipNodesTableID:               crdbInternalGossipNodesTable,
-		catconstants.CrdbInternalKVNodeLivenessTableID:            crdbInternalKVNodeLivenessTable,
-		catconstants.CrdbInternalGossipAlertsTableID:              crdbInternalGossipAlertsTable,
-		catconstants.CrdbInternalGossipLivenessTableID:            crdbInternalGossipLivenessTable,
-		catconstants.CrdbInternalGossipNetworkTableID:             crdbInternalGossipNetworkTable,
-		catconstants.CrdbInternalIndexColumnsTableID:              crdbInternalIndexColumnsTable,
-		catconstants.CrdbInternalIndexUsageStatisticsTableID:      crdbInternalIndexUsageStatistics,
-		catconstants.CrdbInternalInflightTraceSpanTableID:         crdbInternalInflightTraceSpanTable,
-		catconstants.CrdbInternalJobsTableID:                      crdbInternalJobsTable,
-		catconstants.CrdbInternalKVNodeStatusTableID:              crdbInternalKVNodeStatusTable,
-		catconstants.CrdbInternalKVStoreStatusTableID:             crdbInternalKVStoreStatusTable,
-		catconstants.CrdbInternalLeasesTableID:                    crdbInternalLeasesTable,
-		catconstants.CrdbInternalLocalContentionEventsTableID:     crdbInternalLocalContentionEventsTable,
-		catconstants.CrdbInternalLocalDistSQLFlowsTableID:         crdbInternalLocalDistSQLFlowsTable,
-		catconstants.CrdbInternalLocalQueriesTableID:              crdbInternalLocalQueriesTable,
-		catconstants.CrdbInternalLocalTransactionsTableID:         crdbInternalLocalTxnsTable,
-		catconstants.CrdbInternalLocalSessionsTableID:             crdbInternalLocalSessionsTable,
-		catconstants.CrdbInternalLocalMetricsTableID:              crdbInternalLocalMetricsTable,
-		catconstants.CrdbInternalNodeStmtStatsTableID:             crdbInternalNodeStmtStatsTable,
-		catconstants.CrdbInternalNodeTxnStatsTableID:              crdbInternalNodeTxnStatsTable,
-		catconstants.CrdbInternalPartitionsTableID:                crdbInternalPartitionsTable,
-		catconstants.CrdbInternalPredefinedCommentsTableID:        crdbInternalPredefinedCommentsTable,
-		catconstants.CrdbInternalRangesNoLeasesTableID:            crdbInternalRangesNoLeasesTable,
-		catconstants.CrdbInternalRangesViewID:                     crdbInternalRangesView,
-		catconstants.CrdbInternalRuntimeInfoTableID:               crdbInternalRuntimeInfoTable,
-		catconstants.CrdbInternalSchemaChangesTableID:             crdbInternalSchemaChangesTable,
-		catconstants.CrdbInternalSessionTraceTableID:              crdbInternalSessionTraceTable,
-		catconstants.CrdbInternalSessionVariablesTableID:          crdbInternalSessionVariablesTable,
-		catconstants.CrdbInternalStmtStatsTableID:                 crdbInternalStmtStatsTable,
-		catconstants.CrdbInternalTableColumnsTableID:              crdbInternalTableColumnsTable,
-		catconstants.CrdbInternalTableIndexesTableID:              crdbInternalTableIndexesTable,
-		catconstants.CrdbInternalTablesTableLastStatsID:           crdbInternalTablesTableLastStats,
-		catconstants.CrdbInternalTablesTableID:                    crdbInternalTablesTable,
-		catconstants.CrdbInternalTransactionStatsTableID:          crdbInternalTransactionStatisticsTable,
-		catconstants.CrdbInternalTxnStatsTableID:                  crdbInternalTxnStatsTable,
-		catconstants.CrdbInternalZonesTableID:                     crdbInternalZonesTable,
-		catconstants.CrdbInternalInvalidDescriptorsTableID:        crdbInternalInvalidDescriptorsTable,
-		catconstants.CrdbInternalClusterDatabasePrivilegesTableID: crdbInternalClusterDatabasePrivilegesTable,
-		catconstants.CrdbInternalCrossDbRefrences:                 crdbInternalCrossDbReferences,
-		catconstants.CrdbInternalLostTableDescriptors:             crdbLostTableDescriptors,
-		catconstants.CrdbInternalClusterInflightTracesTable:       crdbInternalClusterInflightTracesTable,
-		catconstants.CrdbInternalRegionsTable:                     crdbInternalRegionsTable,
-		catconstants.CrdbInternalDefaultPrivilegesTable:           crdbInternalDefaultPrivilegesTable,
-		catconstants.CrdbInternalActiveRangeFeedsTable:            crdbInternalActiveRangeFeedsTable,
-		catconstants.CrdbInternalTenantUsageDetailsViewID:         crdbInternalTenantUsageDetailsView,
+		catconstants.CrdbInternalAutoMultiRegionRecommendationsTableID: crdbInternalAutoMultiRegionRecommendationsTable,
+		catconstants.CrdbInternalBackwardDependenciesTableID:           crdbInternalBackwardDependenciesTable,
+		catconstants.CrdbInternalBuildInfoTableID:                      crdbInternalBuildInfoTable,
+		catconstants.CrdbInternalBuiltinFunctionsTableID:               crdbInternalBuiltinFunctionsTable,
+		catconstants.CrdbInternalClusterContendedIndexesViewID:         crdbInternalClusterContendedIndexesView,
+		catconstants.CrdbInternalClusterContendedKeysViewID:            crdbInternalClusterContendedKeysView,
+		catconstants.CrdbInternalClusterContendedTablesViewID:          crdbInternalClusterContendedTablesView,
+		catconstants.CrdbInternalClusterContentionEventsTableID:        crdbInternalClusterContentionEventsTable,
+		catconstants.CrdbInternalClusterDistSQLFlowsTableID:            crdbInternalClusterDistSQLFlowsTable,
+		catconstants.CrdbInternalClusterQueriesTableID:                 crdbInternalClusterQueriesTable,
+		catconstants.CrdbInternalClusterTransactionsTableID:            crdbInternalClusterTxnsTable,
+		catconstants.CrdbInternalClusterSessionsTableID:                crdbInternalClusterSessionsTable,
+		catconstants.CrdbInternalClusterSettingsTableID:                crdbInternalClusterSettingsTable,
+		catconstants.CrdbInternalCreateSchemaStmtsTableID:              crdbInternalCreateSchemaStmtsTable,
+		catconstants.CrdbInternalCreateStmtsTableID:                    crdbInternalCreateStmtsTable,
+		catconstants.CrdbInternalCreateTypeStmtsTableID:                crdbInternalCreateTypeStmtsTable,
+		catconstants.CrdbInternalDatabasesTableID:                      crdbInternalDatabasesTable,
+		catconstants.CrdbInternalFeatureUsageID:                        crdbInternalFeatureUsage,
+		catconstants.CrdbInternalForwardDependenciesTableID:            crdbInternalForwardDependenciesTable,
+		catconstants.CrdbInternalGossipNodesTableID:                    crdbInternalGossipNodesTable,
+		catconstants.CrdbInternalKVNodeLivenessTableID:                 crdbInternalKVNodeLivenessTable,
+		catconstants.CrdbInternalGossipAlertsTableID:                   crdbInternalGossipAlertsTable,
+		catconstants.CrdbInternalGossipLivenessTableID:                 crdbInternalGossipLivenessTable,
+		catconstants.CrdbInternalGossipNetworkTableID:                  crdbInternalGossipNetworkTable,
+		catconstants.CrdbInternalIndexColumnsTableID:                   crdbInternalIndexColumnsTable,
+		catconstants.CrdbInternalIndexUsageStatisticsTableID:           crdbInternalIndexUsageStatistics,
+		catconstants.CrdbInternalInflightTraceSpanTableID:              crdbInternalInflightTraceSpanTable,
+		catconstants.CrdbInternalJobsTableID:                           crdbInternalJobsTable,
+		catconstants.CrdbInternalKVNodeStatusTableID:                   crdbInternalKVNodeStatusTable,
+		catconstants.CrdbInternalKVStoreStatusTableID:                  crdbInternalKVStoreStatusTable,
+		catconstants.CrdbInternalLeasesTableID:                         crdbInternalLeasesTable,
+		catconstants.CrdbInternalLocalContentionEventsTableID:          crdbInternalLocalContentionEventsTable,
+		catconstants.CrdbInternalLocalDistSQLFlowsTableID:              crdbInternalLocalDistSQLFlowsTable,
+		catconstants.CrdbInternalLocalQueriesTableID:                   crdbInternalLocalQueriesTable,
+		catconstants.CrdbInternalLocalTransactionsTableID:              crdbInternalLocalTxnsTable,
+		catconstants.CrdbInternalLocalSessionsTableID:                  crdbInternalLocalSessionsTable,
+		catconstants.CrdbInternalLocalMetricsTableID:                   crdbInternalLocalMetricsTable,
+		catconstants.CrdbInternalNodeStmtStatsTableID:                  crdbInternalNodeStmtStatsTable,
+		catconstants.CrdbInternalNodeTxnStatsTableID:                   crdbInternalNodeTxnStatsTable,
+		catconstants.CrdbInternalPartitionsTableID:                     crdbInternalPartitionsTable,
+		catconstants.CrdbInternalPredefinedCommentsTableID:             crdbInternalPredefinedCommentsTable,
+		catconstants.CrdbInternalRangesNoLeasesTableID:                 crdbInternalRangesNoLeasesTable,
+		catconstants.CrdbInternalRangesViewID:                          crdbInternalRangesView,
+		catconstants.CrdbInternalRuntimeInfoTableID:                    crdbInternalRuntimeInfoTable,
+		catconstants.CrdbInternalSchemaChangesTableID:                  crdbInternalSchemaChangesTable,
+		catconstants.CrdbInternalSessionTraceTableID:                   crdbInternalSessionTraceTable,
+		catconstants.CrdbInternalSessionVariablesTableID:               crdbInternalSessionVariablesTable,
+		catconstants.CrdbInternalStmtStatsTableID:                      crdbInternalStmtStatsTable,
+		catconstants.CrdbInternalTableColumnsTableID:                   crdbInternalTableColumnsTable,
+		catconstants.CrdbInternalTableIndexesTableID:                   crdbInternalTableIndexesTable,
+		catconstants.CrdbInternalTablesTableLastStatsID:                crdbInternalTablesTableLastStats,
+		catconstants.CrdbInternalTablesTableID:                         crdbInternalTablesTable,
+		catconstants.CrdbInternalTransactionStatsTableID:               crdbInternalTransactionStatisticsTable,
+		catconstants.CrdbInternalTxnStatsTableID:                       crdbInternalTxnStatsTable,
+		catconstants.CrdbInternalZonesTableID:                          crdbInternalZonesTable,
+		catconstants.CrdbInternalInvalidDescriptorsTableID:             crdbInternalInvalidDescriptorsTable,
+		catconstants.CrdbInternalClusterDatabasePrivilegesTableID:      crdbInternalClusterDatabasePrivilegesTable,
+		catconstants.CrdbInternalCrossDbRefrences:                      crdbInternalCrossDbReferences,
+		catconstants.CrdbInternalLostTableDescriptors:                  crdbLostTableDescriptors,
+		catconstants.CrdbInternalClusterInflightTracesTable:            crdbInternalClusterInflightTracesTable,
+		catconstants.CrdbInternalRegionsTable:                          crdbInternalRegionsTable,
+		catconstants.CrdbInternalDefaultPrivilegesTable:                crdbInternalDefaultPrivilegesTable,
+		catconstants.CrdbInternalActiveRangeFeedsTable:                 crdbInternalActiveRangeFeedsTable,
+		catconstants.CrdbInternalTenantUsageDetailsViewID:              crdbInternalTenantUsageDetailsView,
 	},
 	validWithNoDatabaseContext: true,
 }
@@ -2687,6 +2688,88 @@ CREATE TABLE crdb_internal.index_columns (
 
 				return catalog.ForEachIndex(table, catalog.IndexOpts{NonPhysicalPrimaryIndex: true}, reportIndex)
 			})
+	},
+}
+
+// TODO: revalation - use the code below to call the automr database and table
+//  level tables and pull the rows out of there to populate the crdb_internal
+//  table.
+
+//	it, err := executor.QueryIterator(
+//	ctx, "get-all-names", txn,
+//	`SELECT id, "parentID", "parentSchemaID", name FROM system.namespace`,
+//)
+//	if err != nil {
+//	return nil, err
+//}
+//	var ok bool
+//	for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+//	r := it.Cur()
+//	id, parentID, parentSchemaID, name := tree.MustBeDInt(r[0]), tree.MustBeDInt(r[1]), tree.MustBeDInt(r[2]), tree.MustBeDString(r[3])
+//	namespace[descpb.ID(id)] = descpb.NameInfo{
+//	ParentID:       descpb.ID(parentID),
+//	ParentSchemaID: descpb.ID(parentSchemaID),
+//	Name:           string(name),
+//}
+//}
+
+// crdbInternalAutoMultiRegionRecommendationsTable exposes the automatic
+// multi-region table recommendations.
+var crdbInternalAutoMultiRegionRecommendationsTable = virtualSchemaTable{
+	comment: "automatic multi-region table recommendations",
+	schema: `
+CREATE TABLE crdb_internal.auto_multi_region (
+  region                STRING,
+  table_name            STRING,
+  reads                 INT,
+  writes                INT,
+  pct_reads             FLOAT
+)
+`,
+	// FIXME: I think what we want to do here is loop over the tables in the
+	//  database, and populate here with the table level stats.  We don't have
+	//  to be fancy about calculating ratios, simply the raw stats will be
+	//  enough, and then we can use the delegate statement to derive the full
+	//  set of stats.
+	//
+	//  NOTE: The above plan will only work for database-level stats.  For table
+	//  level stats, we'll need to do something else.
+
+	populate: func(ctx context.Context, p *planner, desc catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+		if !desc.IsAutoMultiRegionEnabled() {
+			return nil
+		}
+
+		stmt := fmt.Sprintf(`SELECT crdb_region, tab, reads, writes FROM %s.crdb_internal_auto_multi_region`, desc.GetName())
+
+		it, err := p.execCfg.InternalExecutor.QueryIterator(
+			ctx, "get-auto-multi-region-stats", p.txn, stmt,
+		)
+		if err != nil {
+			return err
+		}
+		var ok bool
+		for ok, err = it.Next(ctx); ok; ok, err = it.Next(ctx) {
+			r := it.Cur()
+			reads := tree.DFloat(tree.MustBeDInt(r[2]))
+			writes := tree.DFloat(tree.MustBeDInt(r[3]))
+			var pctReads tree.DFloat
+			if reads+writes == 0 {
+				pctReads = -1.0
+			} else {
+				pctReads = reads / (reads + writes)
+			}
+			if err := addRow(
+				tree.NewDString(r[0].String()),
+				r[1],
+				r[2],
+				r[3],
+				tree.NewDFloat(pctReads),
+			); err != nil {
+				return err
+			}
+		}
+		return nil
 	},
 }
 

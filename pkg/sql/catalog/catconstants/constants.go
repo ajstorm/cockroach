@@ -84,6 +84,7 @@ const (
 // Oid for virtual database and table.
 const (
 	CrdbInternalID = math.MaxUint32 - iota
+	CrdbInternalAutoMultiRegionRecommendationsTableID
 	CrdbInternalBackwardDependenciesTableID
 	CrdbInternalBuildInfoTableID
 	CrdbInternalBuiltinFunctionsTableID

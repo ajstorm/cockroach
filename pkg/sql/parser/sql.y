@@ -828,7 +828,7 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 
 %token <str> QUERIES QUERY
 
-%token <str> RANGE RANGES READ REAL REASON REASSIGN RECURSIVE RECURRING REF REFERENCES REFRESH
+%token <str> RANGE RANGES READ REAL REASON REASSIGN RECOMMENDATIONS RECURSIVE RECURRING REF REFERENCES REFRESH
 %token <str> REGCLASS REGION REGIONAL REGIONS REGNAMESPACE REGPROC REGPROCEDURE REGROLE REGTYPE REINDEX
 %token <str> REMOVE_PATH RENAME REPEATABLE REPLACE REPLICATION
 %token <str> RELEASE RESET RESTORE RESTRICT RESTRICTED RESUME RETURNING RETRY REVISION_HISTORY
@@ -1054,6 +1054,7 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 %type <tree.Statement> set_names
 
 %type <tree.Statement> show_stmt
+%type <tree.Statement> show_auto_multi_region_stmt
 %type <tree.Statement> show_backup_stmt
 %type <tree.Statement> show_columns_stmt
 %type <tree.Statement> show_constraints_stmt
@@ -4898,7 +4899,7 @@ zone_value:
 // %Help: SHOW
 // %Category: Group
 // %Text:
-// SHOW BACKUP, SHOW CLUSTER SETTING, SHOW COLUMNS, SHOW CONSTRAINTS,
+// SHOW AUTOMATIC MULTIREGION RECOMMENDATIONS, SHOW BACKUP, SHOW CLUSTER SETTING, SHOW COLUMNS, SHOW CONSTRAINTS,
 // SHOW CREATE, SHOW CREATE SCHEDULES, SHOW DATABASES, SHOW ENUMS, SHOW HISTOGRAM, SHOW INDEXES, SHOW
 // PARTITIONS, SHOW JOBS, SHOW STATEMENTS, SHOW RANGE, SHOW RANGES, SHOW REGIONS, SHOW SURVIVAL GOAL,
 // SHOW ROLES, SHOW SCHEMAS, SHOW SEQUENCES, SHOW SESSION, SHOW SESSIONS,
@@ -4906,7 +4907,8 @@ zone_value:
 // SHOW TRANSACTIONS, SHOW TYPES, SHOW USERS, SHOW LAST QUERY STATISTICS, SHOW SCHEDULES,
 // SHOW LOCALITY, SHOW ZONE CONFIGURATION, SHOW FULL TABLE SCANS
 show_stmt:
-  show_backup_stmt           // EXTEND WITH HELP: SHOW BACKUP
+ show_auto_multi_region_stmt // EXTEND WITH HELP: SHOW AUTOMATIC MULTIREGION RECOMMENDATIONS
+| show_backup_stmt           // EXTEND WITH HELP: SHOW BACKUP
 | show_columns_stmt          // EXTEND WITH HELP: SHOW COLUMNS
 | show_constraints_stmt      // EXTEND WITH HELP: SHOW CONSTRAINTS
 | show_create_stmt           // EXTEND WITH HELP: SHOW CREATE
@@ -5064,6 +5066,18 @@ show_histogram_stmt:
     $$.val = &tree.ShowHistogram{HistogramID: id}
   }
 | SHOW HISTOGRAM error // SHOW HELP: SHOW HISTOGRAM
+
+// %Help: SHOW AUTOMATIC MULTIREGION RECOMMENDATIONS - shows automatic multiregion table recommendations
+// %Category: CCL
+// %Text: SHOW AUTOMATIC MULTIREGION RECOMMENDATIONS
+// %SeeAlso: WEBDOCS/show-automatic-multiregion.html
+show_auto_multi_region_stmt:
+  SHOW AUTOMATIC MULTIREGION RECOMMENDATIONS FOR database_name
+ {
+    $$.val = &tree.ShowAutoMultiRegionRecommendations{
+       DbName: tree.Name($6),
+    }
+  }
 
 // %Help: SHOW BACKUP - list backup contents
 // %Category: CCL
@@ -13356,6 +13370,7 @@ unreserved_keyword:
 | READ
 | REASON
 | REASSIGN
+| RECOMMENDATIONS
 | RECURRING
 | RECURSIVE
 | REF

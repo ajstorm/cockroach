@@ -142,4 +142,67 @@ ca-central-1    1      0
 us-east-1       1      0
 us-east-1       1      1
 
+query TTIIF colnames
+SELECT * FROM crdb_internal.auto_multi_region
+----
+region            table_name  reads  writes  pct_reads
+'ap-southeast-2'  t           6      3       0.666666666666667
+'ca-central-1'    t           2      0       1
+'us-east-1'       t           2      1       0.666666666666667
 
+
+statement ok
+CREATE TABLE expect_global_recommendation (i INT);
+INSERT INTO expect_global_recommendation VALUES (100),(200),(300),(400)
+
+repeat 20
+query I nodeidx=1
+USE db;
+SELECT i FROM expect_global_recommendation ORDER BY i
+----
+100
+200
+300
+400
+
+
+repeat 5
+query I nodeidx=3
+USE db;
+SELECT i FROM expect_global_recommendation ORDER BY i
+----
+100
+200
+300
+400
+
+repeat 3
+query I nodeidx=6
+USE db;
+SELECT i FROM expect_global_recommendation ORDER BY i
+----
+100
+200
+300
+400
+
+statement ok
+CREATE TABLE expect_regional_by_table_recommendation (i INT);
+INSERT INTO expect_regional_by_table_recommendation VALUES (100),(200),(300),(400)
+
+repeat 15
+query I
+SELECT i FROM expect_regional_by_table_recommendation ORDER BY i
+----
+100
+200
+300
+400
+
+query TIFFTT colnames,retry
+SHOW AUTOMATIC MULTIREGION RECOMMENDATIONS FOR DB
+----
+table_name                               total_ops  pct_reads               pct_affinitized         affinity_region   recommendation
+expect_global_recommendation             116        0.96551724137931034483  0.72413793103448275862  'ap-southeast-2'  GLOBAL
+expect_regional_by_table_recommendation  64         0.9375                  1                       'ap-southeast-2'  REGIONAL BY TABLE IN 'ap-southeast-2'
+t                                        14         0.71428571428571428571  0.64285714285714285714  'ap-southeast-2'  NONE

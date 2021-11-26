@@ -72,6 +72,23 @@ func (node *ShowClusterSettingList) Format(ctx *FmtCtx) {
 	ctx.WriteString(" CLUSTER SETTINGS")
 }
 
+// ShowAutoMultiRegionRecommendations represents a SHOW AUTO MULTI REGION
+// RECOMMENDATIONS statement.
+type ShowAutoMultiRegionRecommendations struct {
+	DbName Name
+}
+
+// Format implements the NodeFormatter interface.
+func (node *ShowAutoMultiRegionRecommendations) Format(ctx *FmtCtx) {
+	ctx.WriteString("SHOW AUTOMATIC MULTIREGION RECOMMENDATIONS FOR ")
+	// Cluster setting names never contain PII and should be distinguished
+	// for feature tracking purposes.
+	ctx.WithFlags(ctx.flags & ^FmtAnonymize & ^FmtMarkRedactionNode, func() {
+		s := node.DbName.String()
+		ctx.FormatNameP(&s)
+	})
+}
+
 // BackupDetails represents the type of details to display for a SHOW BACKUP
 // statement.
 type BackupDetails int

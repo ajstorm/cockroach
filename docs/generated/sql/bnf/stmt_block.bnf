@@ -209,7 +209,8 @@ preparable_set_stmt ::=
 	| use_stmt
 
 show_stmt ::=
-	show_backup_stmt
+	show_auto_multi_region_stmt
+	| show_backup_stmt
 	| show_columns_stmt
 	| show_constraints_stmt
 	| show_create_stmt
@@ -626,6 +627,9 @@ set_csetting_stmt ::=
 
 use_stmt ::=
 	'USE' var_value
+
+show_auto_multi_region_stmt ::=
+	'SHOW' 'AUTOMATIC' 'MULTIREGION' 'RECOMMENDATIONS' 'FOR' database_name
 
 show_backup_stmt ::=
 	'SHOW' 'BACKUPS' 'IN' string_or_placeholder
@@ -1077,6 +1081,7 @@ unreserved_keyword ::=
 	| 'READ'
 	| 'REASON'
 	| 'REASSIGN'
+	| 'RECOMMENDATIONS'
 	| 'RECURRING'
 	| 'RECURSIVE'
 	| 'REF'

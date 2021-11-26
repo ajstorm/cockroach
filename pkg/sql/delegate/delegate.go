@@ -37,6 +37,9 @@ func TryDelegate(
 		evalCtx: evalCtx,
 	}
 	switch t := stmt.(type) {
+	case *tree.ShowAutoMultiRegionRecommendations:
+		return d.delegateShowAutoMultiRegionRecommendations(t)
+
 	case *tree.ShowClusterSettingList:
 		return d.delegateShowClusterSettingList(t)
 
