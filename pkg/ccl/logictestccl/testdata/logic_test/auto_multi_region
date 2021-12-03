@@ -22,7 +22,9 @@ ALTER DATABASE db SET AUTOMATIC MULTIREGION ON
 query TTTTIT
 SHOW TABLES
 ----
-public  crdb_internal_auto_multi_region  table  root  0  REGIONAL BY ROW AS crdb_region
+public  crdb_internal_auto_multi_region_row  table  root  0  REGIONAL BY ROW AS crdb_region
+public  crdb_internal_auto_multi_region_tab  table  root  0  REGIONAL BY ROW AS crdb_region
+
 
 statement ok
 CREATE TABLE t (i INT)
@@ -36,7 +38,7 @@ statement ok
 INSERT INTO t VALUES (1975)
 
 query TTII colnames,retry
-SELECT crdb_region, tab, reads, writes FROM crdb_internal_auto_multi_region
+SELECT crdb_region, tab, reads, writes FROM crdb_internal_auto_multi_region_tab
 ----
 crdb_region     tab  reads  writes
 ap-southeast-2  t    0      1
@@ -54,7 +56,7 @@ USE db;
 INSERT INTO t VALUES (1980)
 
 query TTII colnames,retry
-SELECT crdb_region, tab, reads, writes FROM crdb_internal_auto_multi_region
+SELECT crdb_region, tab, reads, writes FROM crdb_internal_auto_multi_region_tab
 ----
 crdb_region     tab  reads  writes
 ap-southeast-2  t    0      1
@@ -68,7 +70,7 @@ SELECT i from t
 1980
 
 query TTII colnames,retry
-SELECT crdb_region, tab, reads, writes FROM crdb_internal_auto_multi_region
+SELECT crdb_region, tab, reads, writes FROM crdb_internal_auto_multi_region_tab
 ----
 crdb_region     tab  reads  writes
 ap-southeast-2  t    2      1
@@ -90,7 +92,7 @@ SELECT i from t
 1980
 
 query TTII colnames,retry
-SELECT crdb_region, tab, reads, writes FROM crdb_internal_auto_multi_region
+SELECT crdb_region, tab, reads, writes FROM crdb_internal_auto_multi_region_tab
 ----
 crdb_region     tab  reads  writes
 ap-southeast-2  t    2      1
@@ -98,7 +100,7 @@ ca-central-1    t    2      0
 us-east-1       t    2      1
 
 query TII colnames,retry
-SELECT crdb_region, reads, writes FROM crdb_internal_auto_multi_region_t order by (crdb_region, reads, writes)
+SELECT crdb_region, reads, writes FROM crdb_internal_auto_multi_region_row order by (crdb_region, reads, writes)
 ----
 crdb_region     reads  writes
 ap-southeast-2  1      0
@@ -116,7 +118,7 @@ SELECT i from t
 1980
 
 query TII colnames,retry
-SELECT crdb_region, reads, writes FROM crdb_internal_auto_multi_region_t order by (crdb_region, reads, writes)
+SELECT crdb_region, reads, writes FROM crdb_internal_auto_multi_region_row order by (crdb_region, reads, writes)
 ----
 crdb_region     reads  writes
 ap-southeast-2  2      0
@@ -130,7 +132,7 @@ statement ok
 INSERT INTO t SELECT * FROM t
 
 query TII colnames,retry
-SELECT crdb_region, reads, writes FROM crdb_internal_auto_multi_region_t order by (crdb_region, reads, writes)
+SELECT crdb_region, reads, writes FROM crdb_internal_auto_multi_region_row order by (crdb_region, reads, writes)
 ----
 crdb_region     reads  writes
 ap-southeast-2  0      1

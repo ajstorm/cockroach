@@ -721,7 +721,7 @@ func createRowLevelTrackingTable(
 	// Don't create tracking tables if auto-multi-region is disabled, or if
 	// we're dealing with an auto-multi-region table.
 	if !dbDesc.IsAutoMultiRegionEnabled() ||
-		strings.Contains(tbDesc.Name, tree.AutoMultiRegionTableName) {
+		strings.Contains(tbDesc.Name, tree.AutoMultiRegionTableTrackingTableName) {
 		return nil
 	}
 
@@ -792,7 +792,7 @@ func createRowLevelTrackingTable(
 		Table: tree.MakeTableNameWithSchema(
 			tree.Name(dbDesc.GetName()),
 			tree.Name(tree.AutoMultiRegionSchemaName),
-			tree.Name(tree.AutoMultiRegionTableName+"_"+tbDesc.GetName()),
+			tree.Name(tree.AutoMultiRegionTableTrackingTableName+"_"+tbDesc.GetName()),
 		),
 		Defs: defs,
 		Locality: &tree.Locality{
@@ -831,7 +831,7 @@ func CreateRowLevelTrackingTables(params runParams, desc *dbdesc.Mutable) error 
 
 // Create the table level tracking table.  This is used to determine if a table
 // should be REGIONAL BY TABLE or GLOBAL.
-func (n *alterDatabaseAutoMultiRegionNode) createTableLevelTrackingTable(params runParams) error {
+func (n *alterDatabaseAutoMultiRegionNode) createAMRTrackingTables(params runParams) error {
 	// This code is pretty hacky right now.  For instance, we're creating a
 	// fake createTableNode so that we can call its corresponding startExec
 	// method.
@@ -840,72 +840,140 @@ func (n *alterDatabaseAutoMultiRegionNode) createTableLevelTrackingTable(params 
 	// (table string,
 	//  reads int,
 	//  writes int,
-	//  primary key (region, object))
+	//  primary key (region, table))
 	// There's actually 4 columns, because one is the crdb_region column
-	numColumns := 4
-	defs := make(tree.TableDefs, 0, numColumns)
-	//	defs := make(tree.TableDefs, 0, len(columnDefs))
+	numTableTrackingColumns := 4
+	tableLevelTrackingDefs := make(tree.TableDefs, 0, numTableTrackingColumns)
+	// CREATE TABLE crdb_internal_auto_multi_region_rows
+	// (table string,
+	//  reads int,
+	//  writes int,
+	//  pk_sha string,
+	//  primary key (region, table, pk_sha))
+	// There's actually 5 columns, because one is the crdb_region column
+	numRowTrackingColumns := 5
+	rowLevelTrackingDefs := make(tree.TableDefs, 0, numRowTrackingColumns)
+	//	tableLevelTrackingDefs := make(tree.TableDefs, 0, len(columnDefs))
 
-	c1 := &tree.ColumnTableDef{
+	tabCol := &tree.ColumnTableDef{
 		Name: "tab",
 		Type: types.String,
 	}
-	defs = append(defs, c1)
 
-	c2 := &tree.ColumnTableDef{
+	readsCol := &tree.ColumnTableDef{
 		Name: "reads",
 		Type: types.Int4,
 	}
-	c2.Nullable.Nullability = tree.Null
-	defs = append(defs, c2)
+	// FIXME: NotNull here?
+	readsCol.Nullable.Nullability = tree.Null
 
-	c3 := &tree.ColumnTableDef{
+	writesCol := &tree.ColumnTableDef{
 		Name: "writes",
 		Type: types.Int4,
 	}
-	defs = append(defs, c3)
+	readsCol.Nullable.Nullability = tree.Null
+
+	pkShaCol := &tree.ColumnTableDef{
+		Name: "pk_sha",
+		Type: types.String,
+	}
+	readsCol.Nullable.Nullability = tree.Null
 
 	oid := typedesc.TypeIDToOID(n.desc.RegionConfig.RegionEnumID)
-	c4 := regionalByRowDefaultColDef(oid, regionalByRowGatewayRegionDefaultExpr(oid), nil /* onUpdateExpr */)
-	defs = append(defs, c4)
+	regionCol := regionalByRowDefaultColDef(oid, regionalByRowGatewayRegionDefaultExpr(oid), nil /* onUpdateExpr */)
 
-	idxDef := tree.IndexTableDef{}
-	idxDef.Columns = make(tree.IndexElemList, 0, 2)
-	idxDef.Columns = append(idxDef.Columns, tree.IndexElem{
-		Column:    c4.Name,
+	tableLevelTrackingDefs = append(tableLevelTrackingDefs, tabCol)
+	tableLevelTrackingDefs = append(tableLevelTrackingDefs, readsCol)
+	tableLevelTrackingDefs = append(tableLevelTrackingDefs, writesCol)
+	tableLevelTrackingDefs = append(tableLevelTrackingDefs, regionCol)
+
+	rowLevelTrackingDefs = append(rowLevelTrackingDefs, tabCol)
+	rowLevelTrackingDefs = append(rowLevelTrackingDefs, readsCol)
+	rowLevelTrackingDefs = append(rowLevelTrackingDefs, writesCol)
+	rowLevelTrackingDefs = append(rowLevelTrackingDefs, regionCol)
+	rowLevelTrackingDefs = append(rowLevelTrackingDefs, pkShaCol)
+
+	tabIdxDef := tree.IndexTableDef{}
+	tabIdxDef.Columns = make(tree.IndexElemList, 0, 2)
+	tabIdxDef.Columns = append(tabIdxDef.Columns, tree.IndexElem{
+		Column:    regionCol.Name,
 		Direction: tree.Ascending,
 	})
-	idxDef.Columns = append(idxDef.Columns, tree.IndexElem{
-		Column:    c1.Name,
+	tabIdxDef.Columns = append(tabIdxDef.Columns, tree.IndexElem{
+		Column:    tabCol.Name,
 		Direction: tree.Ascending,
 	})
 
-	defs = append(defs, &tree.UniqueConstraintTableDef{
+	tableLevelTrackingDefs = append(tableLevelTrackingDefs, &tree.UniqueConstraintTableDef{
 		PrimaryKey:    true,
-		IndexTableDef: idxDef,
+		IndexTableDef: tabIdxDef,
 	})
 
-	createTable := tree.CreateTable{
+	rowIdxDef := tree.IndexTableDef{}
+	rowIdxDef.Columns = make(tree.IndexElemList, 0, 3)
+	rowIdxDef.Columns = append(rowIdxDef.Columns, tree.IndexElem{
+		Column:    regionCol.Name,
+		Direction: tree.Ascending,
+	})
+	rowIdxDef.Columns = append(rowIdxDef.Columns, tree.IndexElem{
+		Column:    tabCol.Name,
+		Direction: tree.Ascending,
+	})
+	rowIdxDef.Columns = append(rowIdxDef.Columns, tree.IndexElem{
+		Column:    pkShaCol.Name,
+		Direction: tree.Ascending,
+	})
+
+	rowLevelTrackingDefs = append(rowLevelTrackingDefs, &tree.UniqueConstraintTableDef{
+		PrimaryKey:    true,
+		IndexTableDef: rowIdxDef,
+	})
+
+	createTableTrackingTable := tree.CreateTable{
 		IfNotExists: false,
 		// FIXME: What schema should this be placed in?
 		Table: tree.MakeTableNameWithSchema(
 			tree.Name(n.desc.GetName()),
 			tree.Name(tree.AutoMultiRegionSchemaName),
-			tree.Name(tree.AutoMultiRegionTableName),
+			tree.Name(tree.AutoMultiRegionTableTrackingTableName),
 		),
-		Defs: defs,
+		Defs: tableLevelTrackingDefs,
 		Locality: &tree.Locality{
 			LocalityLevel:       tree.LocalityLevelRow,
 			RegionalByRowColumn: tree.RegionalByRowRegionDefaultColName,
 		},
 	}
 
-	ctNode := createTableNode{
-		n:      &createTable,
+	ctTabNode := createTableNode{
+		n:      &createTableTrackingTable,
 		dbDesc: n.desc,
 	}
 
-	if err := ctNode.startExec(params); err != nil {
+	if err := ctTabNode.startExec(params); err != nil {
+		return err
+	}
+
+	createRowTrackingTable := tree.CreateTable{
+		IfNotExists: false,
+		// FIXME: What schema should this be placed in?
+		Table: tree.MakeTableNameWithSchema(
+			tree.Name(n.desc.GetName()),
+			tree.Name(tree.AutoMultiRegionSchemaName),
+			tree.Name(tree.AutoMultiRegionRowTrackingTableName),
+		),
+		Defs: rowLevelTrackingDefs,
+		Locality: &tree.Locality{
+			LocalityLevel:       tree.LocalityLevelRow,
+			RegionalByRowColumn: tree.RegionalByRowRegionDefaultColName,
+		},
+	}
+
+	ctRowNode := createTableNode{
+		n:      &createRowTrackingTable,
+		dbDesc: n.desc,
+	}
+
+	if err := ctRowNode.startExec(params); err != nil {
 		return err
 	}
 
@@ -916,7 +984,7 @@ func (n *alterDatabaseAutoMultiRegionNode) startExec(params runParams) error {
 	dropTableStatement := fmt.Sprintf(
 		"DROP TABLE %s.%s",
 		tree.AutoMultiRegionSchemaName,
-		tree.AutoMultiRegionTableName,
+		tree.AutoMultiRegionTableTrackingTableName,
 	)
 
 	// FIXME: this should be it's own function.
@@ -954,13 +1022,13 @@ func (n *alterDatabaseAutoMultiRegionNode) startExec(params runParams) error {
 	// Create the table-level tracking table.
 	// FIXME: There's no handling for dropping these tables if anything
 	//  fails.
-	if err := n.createTableLevelTrackingTable(params); err != nil {
+	if err := n.createAMRTrackingTables(params); err != nil {
 		return err
 	}
 
-	if err := CreateRowLevelTrackingTables(params, n.desc); err != nil {
-		return err
-	}
+	//	if err := CreateRowLevelTrackingTables(params, n.desc); err != nil {
+	//		return err
+	//	}
 
 	n.desc.AutoMultiRegionEnabled = true
 	if err := params.p.writeNonDropDatabaseChange(

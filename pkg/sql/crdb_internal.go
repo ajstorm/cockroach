@@ -2740,7 +2740,7 @@ CREATE TABLE crdb_internal.auto_multi_region (
 			return nil
 		}
 
-		stmt := fmt.Sprintf(`SELECT crdb_region, tab, reads, writes FROM %s.crdb_internal_auto_multi_region`, desc.GetName())
+		stmt := fmt.Sprintf(`SELECT crdb_region, tab, reads, writes FROM %s.%s`, desc.GetName(), tree.AutoMultiRegionTableTrackingTableName)
 
 		it, err := p.execCfg.InternalExecutor.QueryIterator(
 			ctx, "get-auto-multi-region-stats", p.txn, stmt,

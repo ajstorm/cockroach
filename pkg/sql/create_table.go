@@ -2279,21 +2279,6 @@ func newTableDesc(
 		return nil, err
 	}
 
-	// If we've created a descriptor, add the auto-multi-region table.
-	if ret != nil {
-		// FIXME: Do we really need to get this here?  Can we not pull from somewhere else?
-		dbDesc, err := params.p.Descriptors().GetMutableDatabaseByName(params.ctx, params.p.txn, db.GetName(),
-			tree.DatabaseLookupFlags{Required: true},
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		if err := createRowLevelTrackingTable(params, ret, dbDesc); err != nil {
-			return nil, err
-		}
-	}
-
 	return ret, err
 }
 

@@ -48,7 +48,10 @@ const (
 
 const (
 	// The auto multi-region table name
-	AutoMultiRegionTableName string = "crdb_internal_auto_multi_region"
+	AutoMultiRegionTableTrackingTableName string = "crdb_internal_auto_multi_region_tab"
+
+	// The auto multi-region table name
+	AutoMultiRegionRowTrackingTableName string = "crdb_internal_auto_multi_region_row"
 
 	// Schema in which the auto multi-region table resides
 	AutoMultiRegionSchemaName string = "public"

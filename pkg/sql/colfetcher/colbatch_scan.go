@@ -246,7 +246,7 @@ func NewColBatchScan(
 	}
 
 	// FIXME: This condition can be made into a function - table.RequiresAutoMultiRegionReporting()
-	if table.IsAutoMultiRegionEnabled() && table.GetName() != tree.AutoMultiRegionTableName {
+	if table.IsAutoMultiRegionEnabled() && table.GetName() != tree.AutoMultiRegionTableTrackingTableName {
 		// Add the PK columns to NeededColumns, if they're not there already.
 		idx := table.GetPrimaryIndex()
 		for i := 0; i < idx.NumKeyColumns(); i++ {

@@ -41,6 +41,8 @@ func (r resumer) Resume(ctx context.Context, execCtxI interface{}) error {
 	rowMutation := pl.GetAutoMultiRegion().RowMutation
 	database := pl.GetAutoMultiRegion().Database
 
+	// FIXME: These two operations need to be in the same transaction because if
+	//  one fails, the other will occur multiple times.
 	if _, err := execCtx.ExecCfg().InternalExecutor.ExecEx(
 		ctx,
 		"update-auto-multi-region-table",

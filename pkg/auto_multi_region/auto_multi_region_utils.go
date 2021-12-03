@@ -14,6 +14,8 @@ package auto_multi_region
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -101,7 +103,8 @@ func (r updateRecord) UpdateForRead() error {
 	log.VEvent(ctx, 1, "updating auto-multi-region stats on read")
 
 	if !desc.IsAutoMultiRegionEnabled() ||
-		strings.Contains(desc.GetName(), tree.AutoMultiRegionTableName) {
+		strings.Contains(desc.GetName(), tree.AutoMultiRegionTableTrackingTableName) ||
+		strings.Contains(desc.GetName(), tree.AutoMultiRegionRowTrackingTableName) {
 		return nil
 	}
 
@@ -118,11 +121,11 @@ func (r updateRecord) UpdateForRead() error {
 		autoMultiRegionTableStatement := fmt.Sprintf(
 			`INSERT INTO %s.%s (crdb_region, tab, reads, writes) VALUES ('%s', '%s', %d, 0) ON CONFLICT (crdb_region, tab) DO UPDATE SET reads = %q.reads + %d`,
 			tree.AutoMultiRegionSchemaName,
-			tree.AutoMultiRegionTableName,
+			tree.AutoMultiRegionTableTrackingTableName,
 			region,
 			desc.GetName(),
 			rowsRead,
-			tree.AutoMultiRegionTableName,
+			tree.AutoMultiRegionTableTrackingTableName,
 			rowsRead,
 		)
 
@@ -134,44 +137,55 @@ func (r updateRecord) UpdateForRead() error {
 		}
 
 		// Build up the list of columns to use in the insert statement
-		colListString := "(crdb_region, reads, writes"
-		onConflictString := "(crdb_region"
+		colListString := "(crdb_region, tab, reads, writes, pk_sha)"
+		onConflictString := "(crdb_region, tab, pk_sha)"
 		colsIsInPK := make([]bool, len(r.cols))
 		// FIXME: add some validation in here to ensure that we're adding
 		//  at least one more column.
 		for i, c := range r.cols {
 			if pkColsIDs[int(c.GetID())] {
-				colListString += ", " + c.GetName()
-				onConflictString += ", " + c.GetName()
+				// colListString += ", " + c.GetName()
+				// onConflictString += ", " + c.GetName()
 				colsIsInPK[i] = true
 			} else {
 				colsIsInPK[i] = false
 			}
 		}
-		colListString += ")"
-		onConflictString += ")"
+		//		colListString += ")"
+		//		onConflictString += ")"
 
 		firstVal := true
 		valuesString := ""
 		for i := 0; i < bat.Length(); i++ {
+			keyString := ""
 			if firstVal {
 				firstVal = false
 			} else {
 				valuesString += ", "
 			}
-			valuesString += fmt.Sprintf(`('%s', 1, 0`, region)
+			valuesString += fmt.Sprintf(`('%s', '%s', 1, 0`, region, desc.GetName())
 			t := colexectestutils.GetTupleFromBatch(bat, i)
 			for j := 0; j < len(r.cols); j++ {
 				if !colsIsInPK[j] {
 					continue
 				}
-				valuesString += fmt.Sprintf(", %v", t[j])
+				//	valuesString += fmt.Sprintf(", %v", t[j])
+				keyString += fmt.Sprintf("%v", t[j])
 			}
-			valuesString += ")"
+
+			// Generate pk_sha
+			hasher := sha1.New()
+			bv := []byte(keyString)
+			hasher.Write(bv)
+			sum := hasher.Sum(nil)
+			// FIXME: Storing this as a string for now (as it's easier), but
+			//  long-term this should be a byte array.
+			pkSha := base64.URLEncoding.EncodeToString(sum)
+			valuesString += fmt.Sprintf(`, '%s')`, pkSha)
 		}
 
 		// FIXME: Turn this into a function for reliable table generation.
-		rowTableName := tree.AutoMultiRegionTableName + "_" + desc.GetName()
+		rowTableName := tree.AutoMultiRegionRowTrackingTableName
 		autoMultiRegionRowStatement := fmt.Sprintf(
 			`INSERT INTO %s.%s %s VALUES %s ON CONFLICT %s DO UPDATE SET reads = %q.reads + 1`,
 			tree.AutoMultiRegionSchemaName,
@@ -234,7 +248,9 @@ func (r *updateRecord) UpdateForWrite() error {
 	rows := r.rowsWritten
 	//bat := r.batch
 
-	if !desc.IsAutoMultiRegionEnabled() || strings.Contains(desc.GetName(), tree.AutoMultiRegionTableName) {
+	if !desc.IsAutoMultiRegionEnabled() ||
+		strings.Contains(desc.GetName(), tree.AutoMultiRegionTableTrackingTableName) ||
+		strings.Contains(desc.GetName(), tree.AutoMultiRegionRowTrackingTableName) {
 		return nil
 	}
 
@@ -251,15 +267,13 @@ func (r *updateRecord) UpdateForWrite() error {
 		autoMultiRegionTableStatement := fmt.Sprintf(
 			`INSERT INTO %s.%s (crdb_region, tab, reads, writes) VALUES ('%s', '%s', 0, %d) ON CONFLICT (crdb_region, tab) DO UPDATE SET writes = %q.writes + %d`,
 			tree.AutoMultiRegionSchemaName,
-			tree.AutoMultiRegionTableName,
+			tree.AutoMultiRegionTableTrackingTableName,
 			region,
 			desc.GetName(),
 			rows,
-			tree.AutoMultiRegionTableName,
+			tree.AutoMultiRegionTableTrackingTableName,
 			rows,
 		)
-
-		// BEGINNING OF CODE THAT NEEDS REWORKING
 
 		// Generate the row tracking insert statement
 		idx := desc.GetPrimaryIndex()
@@ -268,45 +282,57 @@ func (r *updateRecord) UpdateForWrite() error {
 			pkColsIDs[int(idx.GetKeyColumnID(i))] = true
 		}
 
+		// FIXME: a lot of this code is copy pasta'ed from the read case.
+		//  Long term it should be converted into a common function.
 		// Build up the list of columns to use in the insert statement
-		colListString := "(crdb_region, writes, reads"
-		onConflictString := "(crdb_region"
+		colListString := "(crdb_region, tab, writes, reads, pk_sha)"
+		onConflictString := "(crdb_region, tab, pk_sha)"
 		colsIsInPK := make([]bool, len(r.cols))
 		// FIXME: add some validation in here to ensure that we're adding
 		//  at least one more column.
 		for i, c := range r.cols {
 			if pkColsIDs[int(c.GetID())] {
-				colListString += ", " + c.GetName()
-				onConflictString += ", " + c.GetName()
+				//				colListString += ", " + c.GetName()
+				//				onConflictString += ", " + c.GetName()
 				colsIsInPK[i] = true
 			} else {
 				colsIsInPK[i] = false
 			}
 		}
-		colListString += ")"
-		onConflictString += ")"
+		//		colListString += ")"
+		//		onConflictString += ")"
 
 		firstVal := true
 		valuesString := ""
 		for i := 0; i < len(r.rows); i++ {
+			keyString := ""
 			if firstVal {
 				firstVal = false
 			} else {
 				valuesString += ", "
 			}
-			valuesString += fmt.Sprintf(`('%s', 1, 0`, region)
+			valuesString += fmt.Sprintf(`('%s', '%s', 1, 0`, region, desc.GetName())
 			t := r.rows[i]
 			for j := 0; j < len(r.cols); j++ {
 				if !colsIsInPK[j] {
 					continue
 				}
-				valuesString += fmt.Sprintf(", %v", t[j])
+				keyString += fmt.Sprintf("%v", t[j])
+				// valuesString += fmt.Sprintf(", %v", t[j])
 			}
-			valuesString += ")"
+			// Generate pk_sha
+			hasher := sha1.New()
+			bv := []byte(keyString)
+			hasher.Write(bv)
+			sum := hasher.Sum(nil)
+			// FIXME: Storing this as a string for now (as it's easier), but
+			//  long-term this should be a byte array.
+			pkSha := base64.URLEncoding.EncodeToString(sum)
+			valuesString += fmt.Sprintf(`, '%s')`, pkSha)
 		}
 
 		// FIXME: Turn this into a function for reliable table generation.
-		rowTableName := tree.AutoMultiRegionTableName + "_" + desc.GetName()
+		rowTableName := tree.AutoMultiRegionRowTrackingTableName
 		autoMultiRegionRowStatement := fmt.Sprintf(
 			`INSERT INTO %s.%s %s VALUES %s ON CONFLICT %s DO UPDATE SET writes = %q.writes + 1`,
 			tree.AutoMultiRegionSchemaName,
