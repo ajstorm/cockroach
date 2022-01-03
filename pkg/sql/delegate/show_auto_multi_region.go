@@ -45,13 +45,18 @@ func (d *delegator) delegateShowAutoMultiRegionRecommendations(
 	//  is read-only, if it's affinitized to a given region, it should be RBT.
 	const pctReadsForGlobalTables = 0.95
 
-	// FIXME: Need to figure out what to do to get the affinity region...
+	// - If more than 75% of the table's accesses are affinitized at the row
+	//   level, then recommend a regional by row table.
+	const pctAffinitizedForRegionalByRowTables = 0.75
+
+	// FIXME: AVG affinity across all keys (when testing for RBR) may produce a
+	//  bad result, especially if key access is skewed.
 	regionalAndGlobalQuery := `
 WITH
 	affinity_region_stats (region, r_table_name, reads, total_row_ops)
 		AS (
 			SELECT 
-				DISTINCT ON (table_name)
+				DISTINCT ON (r_table_name)
 					 region,
 					 table_name AS r_table_name,
 					 reads, 
@@ -59,7 +64,7 @@ WITH
 			FROM
 				crdb_internal.auto_multi_region
 			ORDER BY
-				table_name, total_row_ops DESC
+				r_table_name, total_row_ops DESC
 		),
 	tab_grouped_stats (g_table_name, total_ops, pct_reads)
 		AS (
@@ -75,71 +80,85 @@ WITH
 				crdb_internal.auto_multi_region
 			GROUP BY 
 				table_name
+		),
+	affinity_key_stats (af_tab, af_key, total_row_ops)
+		AS (
+			SELECT
+				DISTINCT ON (tab, af_key)
+	                 tab AS af_tab,
+					 pk_sha AS af_key,
+					 (reads + writes) AS total_row_ops
+			FROM
+				%s
+			ORDER BY
+				tab, af_key, total_row_ops DESC
+		),
+	key_grouped_ops (kg_tab, kg_key, total_ops)
+		AS (
+			SELECT
+	            tab AS kg_tab,
+				pk_sha AS kg_key,
+				SUM(reads + writes) AS total_ops
+			FROM
+				%s
+			GROUP BY
+				tab, kg_key
+		),
+	key_affinity (ka_key, ka_tab, row_affinity)
+		AS (
+			SELECT
+				af.af_key AS ka_key,
+	            af.af_tab AS ka_tab,
+				CASE
+					WHEN total_ops <= 0 THEN 1.0
+					WHEN total_ops > 0 THEN total_row_ops / total_ops
+				END AS row_affinity
+			FROM
+				affinity_key_stats af 
+	  				JOIN key_grouped_ops kg 
+	  				ON af_key = kg_key AND af_tab = kg_tab
+		),
+	row_affinity (ra_tab, ra_affinity)
+		AS (
+			SELECT
+				ka_tab AS ra_tab,
+				AVG(row_affinity) AS ra_affinity
+			FROM
+				key_affinity
+			GROUP BY
+				ra_tab
 		)
 	SELECT 
 		r_table_name AS table_name, 
 		total_ops,
 		pct_reads,
-		total_row_ops / total_ops AS pct_affinitized,
+		total_row_ops / total_ops AS tbl_pct_affinitized,
 		region AS affinity_region,
+		ra_affinity AS affinity_key,
 		CASE
 			WHEN total_row_ops / total_ops > %f THEN CONCAT('REGIONAL BY TABLE IN ', region)
 			WHEN pct_reads > %f THEN 'GLOBAL'	
+			WHEN ra_affinity > %f THEN 'REGIONAL BY ROW'
 			ELSE 'NONE'
 		END AS recommendation
 	FROM
-		affinity_region_stats, tab_grouped_stats
-	WHERE
-		r_table_name = g_table_name
+		affinity_region_stats
+ 		JOIN tab_grouped_stats
+			ON r_table_name = g_table_name
+		JOIN row_affinity
+			ON ra_tab = g_table_name 
 	ORDER BY
 		table_name
 `
 
-	//	regionalByRowQuery := `
-	//WITH
-	//	affinity_region_stats (af_key, total_row_ops)
-	//		AS (
-	//			SELECT
-	//				DISTINCT ON (af_key)
-	//					 ???? AS af_key
-	//					 (reads + writes) AS total_row_ops
-	//			FROM
-	//				???crdb_internal_auto_multi_region_<table_name>????
-	//			ORDER BY
-	//				af_key, total_row_ops DESC
-	//		),
-	//	key_grouped_ops (key, total_ops)
-	//		AS (
-	//			SELECT
-	//				???? AS kg_key,
-	//				SUM(reads + writes) AS total_ops,
-	//			FROM
-	//				???crdb_internal_auto_multi_region_<table_name>????
-	//			GROUP BY
-	//				key
-	//		)
-	//	key_affinity (key, affinity)
-	//		AS (
-	//			SELECT
-	//				key,
-	//				CASE
-	//					WHEN total_ops <= 0 THEN 1.0
-	//					WHEN total ops > 0 THEN total_row_ops / total_ops
-	//				END AS affinity
-	//			FROM
-	//				affinity_region_stats, key_grouped_ops
-	//			WHERE
-	//				af_key = kg_key
-	//		)
-	//	SELECT
-	//		AVG(affinity)
-	//	FROM
-	//		key_affinity
-	//`
-
+	// FIXME: test the newly added parts of the query above - the last four CTE
+	//  portions and the new additions to the final select statement.
 	finalQuery := fmt.Sprintf(regionalAndGlobalQuery,
+		tree.AutoMultiRegionRowTrackingTableName,
+		tree.AutoMultiRegionRowTrackingTableName,
 		pctAffinitizedForRegionalTables,
-		pctReadsForGlobalTables)
+		pctReadsForGlobalTables,
+		pctAffinitizedForRegionalByRowTables)
 
 	// FIXME: Build row-level query.
 
