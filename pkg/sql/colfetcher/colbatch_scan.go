@@ -246,11 +246,17 @@ func NewColBatchScan(
 	}
 
 	// FIXME: This condition can be made into a function - table.RequiresAutoMultiRegionReporting()
-	if table.IsAutoMultiRegionEnabled() && table.GetName() != tree.AutoMultiRegionTableTrackingTableName {
+	if table.IsAutoMultiRegionEnabled() &&
+		table.GetName() != tree.AutoMultiRegionTableTrackingTableName &&
+		table.GetName() != tree.AutoMultiRegionRowTrackingTableName {
 		// Add the PK columns to NeededColumns, if they're not there already.
 		idx := table.GetPrimaryIndex()
 		for i := 0; i < idx.NumKeyColumns(); i++ {
-			colID := uint32(idx.GetKeyColumnID(i))
+			col, err := table.FindColumnWithID(idx.GetKeyColumnID(i))
+			if err != nil {
+				return nil, err
+			}
+			colID := uint32(col.Ordinal())
 			found := false
 			for _, j := range spec.NeededColumns {
 				if j == colID {
@@ -258,7 +264,7 @@ func NewColBatchScan(
 					break
 				}
 			}
-			if found == false {
+			if !found {
 				spec.NeededColumns = append(spec.NeededColumns, colID)
 			}
 		}

@@ -13,7 +13,6 @@ package sql
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/keys"
@@ -689,7 +688,7 @@ func (n *alterDatabaseAutoMultiRegionNode) setAutoMultiRegionOnAllTables(
 			if err := params.p.checkPrivilegesForMultiRegionOp(ctx, tbDesc); err != nil {
 				return err
 			}
-			tbDesc.AutoMultiRegionEnabled = true
+			tbDesc.AutoMultiRegionEnabled = val
 			return params.p.writeSchemaChangeToBatch(ctx, tbDesc, b)
 		},
 	); err != nil {
@@ -702,139 +701,16 @@ func (n *alterDatabaseAutoMultiRegionNode) setAutoMultiRegionOnAllTables(
 	return nil
 }
 
-//  FIXME: Figure out why we're seeing double counting in some cases:
-//                  expected:
-//                    crdb_region     tab  reads  writes
-//                    ap-southeast-2  t    2      1
-//                    ca-central-1    t    2      0
-//                    us-east-1       t    2      1
-//                but found (query options: "colnames,retry") :
-//                    crdb_region     tab  reads  writes
-//                    ap-southeast-2  t    4      1
-//                    ca-central-1    t    2      0
-//                    us-east-1       t    2      1
-
-// Creates a single row level tracking table.
-func createRowLevelTrackingTable(
-	params runParams, tbDesc *tabledesc.Mutable, dbDesc *dbdesc.Mutable,
-) error {
-	// Don't create tracking tables if auto-multi-region is disabled, or if
-	// we're dealing with an auto-multi-region table.
-	if !dbDesc.IsAutoMultiRegionEnabled() ||
-		strings.Contains(tbDesc.Name, tree.AutoMultiRegionTableTrackingTableName) {
-		return nil
-	}
-
-	cols := tbDesc.GetColumns()
-	idx := tbDesc.GetPrimaryIndex()
-	// The reads, writes, and region columns + all of the PK columns
-	numColumns := 3 + idx.NumKeyColumns()
-	idxDef := tree.IndexTableDef{}
-	idxDef.Columns = make(tree.IndexElemList, 0, 1+idx.NumKeyColumns())
-
-	defs := make(tree.TableDefs, 0, numColumns)
-
-	// FIXME: change this to c1, and renumber below.
-	oid := typedesc.TypeIDToOID(dbDesc.RegionConfig.RegionEnumID)
-	c3 := regionalByRowDefaultColDef(oid, regionalByRowGatewayRegionDefaultExpr(oid), nil /* onUpdateExpr */)
-	defs = append(defs, c3)
-
-	idxDef.Columns = append(idxDef.Columns, tree.IndexElem{
-		Column:    c3.Name,
-		Direction: tree.Ascending,
-	})
-
-	for i := 0; i < idx.NumKeyColumns(); i++ {
-		var col *descpb.ColumnDescriptor
-		// Find the column we're looking for.
-		// FIXME: mapify this to make it more efficient.
-		for _, c := range cols {
-			colID := int(c.ID)
-			keyID := int(idx.GetKeyColumnID(i))
-			if colID == keyID {
-				col = &c
-				break
-			}
-		}
-		cDef := &tree.ColumnTableDef{
-			Name: tree.Name(col.Name),
-			Type: col.Type,
-		}
-		defs = append(defs, cDef)
-
-		idxDef.Columns = append(idxDef.Columns, tree.IndexElem{
-			Column:    cDef.Name,
-			Direction: tree.Ascending,
-		})
-	}
-
-	c1 := &tree.ColumnTableDef{
-		Name: "reads",
-		Type: types.Int4,
-	}
-	c1.Nullable.Nullability = tree.Null
-	defs = append(defs, c1)
-
-	c2 := &tree.ColumnTableDef{
-		Name: "writes",
-		Type: types.Int4,
-	}
-	defs = append(defs, c2)
-
-	defs = append(defs, &tree.UniqueConstraintTableDef{
-		PrimaryKey:    true,
-		IndexTableDef: idxDef,
-	})
-
-	createTable := tree.CreateTable{
-		IfNotExists: false,
-		// FIXME: What schema should this be placed in?
-		Table: tree.MakeTableNameWithSchema(
-			tree.Name(dbDesc.GetName()),
-			tree.Name(tree.AutoMultiRegionSchemaName),
-			tree.Name(tree.AutoMultiRegionTableTrackingTableName+"_"+tbDesc.GetName()),
-		),
-		Defs: defs,
-		Locality: &tree.Locality{
-			LocalityLevel:       tree.LocalityLevelRow,
-			RegionalByRowColumn: tree.RegionalByRowRegionDefaultColName,
-		},
-	}
-
-	ctNode := createTableNode{
-		n:      &createTable,
-		dbDesc: dbDesc,
-	}
-
-	return ctNode.startExec(params)
-}
-
-// CreateRowLevelTrackingTables creates the row-level tracking tables.
-// These are used to determine if a table should be REGIONAL BY ROW.
-func CreateRowLevelTrackingTables(params runParams, desc *dbdesc.Mutable) error {
-	// This code is pretty hacky right now.  For instance, we're creating a
-	// fake createTableNode so that we can call its corresponding startExec
-	// method.
-
-	b := params.p.Txn().NewBatch()
-	if err := params.p.forEachMutableTableInDatabase(
-		params.ctx,
-		desc,
-		func(ctx context.Context, scName string, tbDesc *tabledesc.Mutable) error {
-			return createRowLevelTrackingTable(params, tbDesc, desc)
-		},
-	); err != nil {
-		return err
-	}
-	return params.p.Txn().Run(params.ctx, b)
-}
-
-// Create the table level tracking table.  This is used to determine if a table
-// should be REGIONAL BY TABLE or GLOBAL.
+// Create the automatic multi-region tracking tables. We create two tables:
+//   - one for tracking operations at a table level
+//   - one for tracking operations at a row level
+// The table-level tracking table is used to determine if a multi-region table
+// should be REGIONAL or GLOBAL. The row-level tracking table is used to
+// determine if a table should be REGIONAL BY ROW.
 func (n *alterDatabaseAutoMultiRegionNode) createAMRTrackingTables(params runParams) error {
-	// This code is pretty hacky right now.  For instance, we're creating a
-	// fake createTableNode so that we can call its corresponding startExec
-	// method.
+	// FIXME: This code is pretty hacky right now.  For instance, we're creating
+	//  a fake createTableNode so that we can call its corresponding startExec
+	//  method.
 
 	// CREATE TABLE crdb_internal_auto_multi_region
 	// (table string,
@@ -981,10 +857,15 @@ func (n *alterDatabaseAutoMultiRegionNode) createAMRTrackingTables(params runPar
 }
 
 func (n *alterDatabaseAutoMultiRegionNode) startExec(params runParams) error {
-	dropTableStatement := fmt.Sprintf(
+	dropTableStatement1 := fmt.Sprintf(
 		"DROP TABLE %s.%s",
 		tree.AutoMultiRegionSchemaName,
 		tree.AutoMultiRegionTableTrackingTableName,
+	)
+	dropTableStatement2 := fmt.Sprintf(
+		"DROP TABLE %s.%s",
+		tree.AutoMultiRegionSchemaName,
+		tree.AutoMultiRegionRowTrackingTableName,
 	)
 
 	// FIXME: this should be it's own function.
@@ -993,16 +874,30 @@ func (n *alterDatabaseAutoMultiRegionNode) startExec(params runParams) error {
 			return nil
 		}
 
-		// Disabling automatic multi-region just requires us to drop the table.
+		// Disabling automatic multi-region just requires us to drop the two
+		// tracking tables.
 		if _, err := params.p.execCfg.InternalExecutor.ExecEx(
 			params.ctx,
-			"drop-auto-multi-region-table",
+			"drop-auto-multi-region-table-1",
 			params.p.Txn(),
 			sessiondata.InternalExecutorOverride{
 				User:     params.p.User(),
 				Database: n.desc.Name,
 			},
-			dropTableStatement,
+			dropTableStatement1,
+		); err != nil {
+			return err
+		}
+
+		if _, err := params.p.execCfg.InternalExecutor.ExecEx(
+			params.ctx,
+			"drop-auto-multi-region-table-2",
+			params.p.Txn(),
+			sessiondata.InternalExecutorOverride{
+				User:     params.p.User(),
+				Database: n.desc.Name,
+			},
+			dropTableStatement2,
 		); err != nil {
 			return err
 		}
@@ -1016,19 +911,13 @@ func (n *alterDatabaseAutoMultiRegionNode) startExec(params runParams) error {
 			return err
 		}
 
-		return n.setAutoMultiRegionOnAllTables(params, true)
+		return n.setAutoMultiRegionOnAllTables(params, false)
 	}
 
-	// Create the table-level tracking table.
-	// FIXME: There's no handling for dropping these tables if anything
-	//  fails.
+	// Create the tracking tables.
 	if err := n.createAMRTrackingTables(params); err != nil {
 		return err
 	}
-
-	//	if err := CreateRowLevelTrackingTables(params, n.desc); err != nil {
-	//		return err
-	//	}
 
 	n.desc.AutoMultiRegionEnabled = true
 	if err := params.p.writeNonDropDatabaseChange(

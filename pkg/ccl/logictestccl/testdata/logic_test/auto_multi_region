@@ -204,3 +204,13 @@ table_name                               total_ops  pct_reads               tbl_
 expect_global_recommendation             116        0.96551724137931034483  0.72413793103448275862  'ap-southeast-2'  0.72413793103448275862  GLOBAL
 expect_regional_by_row                   7          0.57142857142857142857  0.57142857142857142857  'ap-southeast-2'  0.91666666666666666667  REGIONAL BY ROW
 expect_regional_by_table_recommendation  64         0.9375                  1                       'ap-southeast-2'  1                       REGIONAL BY TABLE IN 'ap-southeast-2'
+
+statement ok
+ALTER DATABASE db SET AUTOMATIC MULTIREGION OFF
+
+query TTTTIT
+SHOW TABLES
+----
+public  expect_global_recommendation             table  root  0  REGIONAL BY TABLE IN PRIMARY REGION
+public  expect_regional_by_row                   table  root  0  REGIONAL BY TABLE IN PRIMARY REGION
+public  expect_regional_by_table_recommendation  table  root  0  REGIONAL BY TABLE IN PRIMARY REGION
