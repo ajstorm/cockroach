@@ -14,6 +14,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/cockroachdb/cockroach/pkg/auto_multi_region"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/colinfo"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/schemaexpr"
@@ -21,6 +22,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/rowcontainer"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlerrors"
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/errors"
 )
 
@@ -170,9 +172,13 @@ func (u *updateNode) BatchedNext(params runParams) (bool, error) {
 		}
 
 		row := u.source.Values()
+		numPublicCols := len(u.run.tu.tableDesc().PublicColumns())
 		if u.run.tu.tableDesc().IsAutoMultiRegionEnabled() {
-			r := make(tree.Datums, len(row))
-			for i := range row {
+			r := make(tree.Datums, numPublicCols)
+			// We have to carve out only the public columns here, because
+			// Values also contains the new values (for the update) at the end.
+			// FIXME: reinvestigate if this is the right thing to do.
+			for i := 0; i < numPublicCols; i++ {
 				r[i] = row[i]
 			}
 			rows = append(rows, r)
@@ -206,27 +212,40 @@ func (u *updateNode) BatchedNext(params runParams) (bool, error) {
 	//  make the call to update the stats on lastbatch.  Not sure if this is
 	//  even feasible for large batches.
 
-	// Update auto-multi-region stats.
-	// FIXME: Commented out for now. It's not clear how to map the columns being
-	//  updated to the actual table columns due to some messiness in how they're
-	//  tracked in the run struct.  More investigation is requried here.
-	//	wr := auto_multi_region.CreateUpdateRecordForWrite(
-	//		params.ctx,
-	//		u.run.tu.tableDesc(),
-	//		params.EvalContext(),
-	//		params.ExecCfg().JobRegistry,
-	//		params.ExecCfg().Gossip,
-	//		params.EvalContext().Txn.GatewayNodeID(),
-	//		rows,
-	//		int64(u.run.tu.currentBatchSize),
-	//		// FIXME: I'm pretty sure we can't use computedCols as-is.
-	//		u.run.computedCols,
-	//	)
-	//	if err := wr.UpdateForWrite(); err != nil {
-	//		// Log and eat the error to prevent auto-multi-region statistics
-	//		// collection from generating user errors.
-	//		log.VEventf(params.ctx, 1, "Couldn't create auto-multi-region job. Error: %v", err)
+	// FIXME: I'm assuming that there's a more elegant way to do this but
+	//  hacking this together for now.
+	//	pc := planColumns(u.source)
+	//	cols := make([]catalog.Column, len(pc))
+	//	if u.run.tu.tableDesc().IsAutoMultiRegionEnabled() {
+	//		for _, c := range pc {
+	//			//	for i := 0; i < len(pc); i++ {
+	//			u.run.tu.tableDesc().PublicColumns()
+	//			col, err := u.run.tu.tableDesc().FindColumnWithName(tree.Name(c.Name))
+	//			if err != nil {
+	//				return false, err
+	//			}
+	//			cols = append(cols, col)
+	//		}
 	//	}
+
+	// Update auto-multi-region stats.
+	wr := auto_multi_region.CreateUpdateRecordForWrite(
+		params.ctx,
+		u.run.tu.tableDesc(),
+		params.EvalContext(),
+		params.ExecCfg().JobRegistry,
+		params.ExecCfg().Gossip,
+		params.EvalContext().Txn.GatewayNodeID(),
+		rows,
+		int64(u.run.tu.currentBatchSize),
+		//		cols,
+		u.run.tu.tableDesc().PublicColumns(),
+	)
+	if err := wr.UpdateForWrite(); err != nil {
+		// Log and eat the error to prevent auto-multi-region statistics
+		// collection from generating user errors.
+		log.VEventf(params.ctx, 1, "Couldn't create auto-multi-region job. Error: %v", err)
+	}
 
 	if lastBatch {
 		u.run.tu.setRowsWrittenLimit(params.extendedEvalCtx.SessionData())
@@ -246,7 +265,7 @@ func (u *updateNode) BatchedNext(params runParams) (bool, error) {
 // processSourceRow processes one row from the source for update and, if
 // result rows are needed, saves it in the result row container.
 func (u *updateNode) processSourceRow(params runParams, sourceVals tree.Datums) error {
-	// sourceVals contains values for the columns from the table, in the order of the
+	// sourceVals contains values for the colinfo.ResultColumns
 	// table descriptor. (One per column in u.tw.ru.FetchCols)
 	//
 	// And then after that, all the extra expressions potentially added via

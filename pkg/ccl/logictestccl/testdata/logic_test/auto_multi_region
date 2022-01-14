@@ -214,3 +214,19 @@ SHOW TABLES
 public  expect_global_recommendation             table  root  0  REGIONAL BY TABLE IN PRIMARY REGION
 public  expect_regional_by_row                   table  root  0  REGIONAL BY TABLE IN PRIMARY REGION
 public  expect_regional_by_table_recommendation  table  root  0  REGIONAL BY TABLE IN PRIMARY REGION
+
+statement ok
+CREATE TABLE temp (i int, j int, k int, l int, constraint "primary" PRIMARY KEY (i, k))
+
+statement ok
+INSERT INTO temp VALUES (1,1,1,1),(2,2,2,2),(3,3,3,3)
+
+statement ok
+UPDATE temp SET l = 4 where i = 1
+
+statement ok
+UPDATE temp SET j = 5 where j = 3
+
+query IIII
+SELECT * FROM temp
+----
