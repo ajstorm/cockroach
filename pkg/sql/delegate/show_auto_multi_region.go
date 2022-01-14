@@ -134,7 +134,7 @@ WITH
 		pct_reads,
 		total_row_ops / total_ops AS tbl_pct_affinitized,
 		region AS affinity_region,
-		ra_affinity AS affinity_key,
+		ra_affinity AS row_pct_affinitized,
 		CASE
 			WHEN total_row_ops / total_ops > %f THEN CONCAT('REGIONAL BY TABLE IN ', region)
 			WHEN pct_reads > %f THEN 'GLOBAL'	

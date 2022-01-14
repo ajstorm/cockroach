@@ -205,6 +205,29 @@ expect_global_recommendation             116        0.96551724137931034483  0.72
 expect_regional_by_row                   7          0.57142857142857142857  0.57142857142857142857  'ap-southeast-2'  0.91666666666666666667  REGIONAL BY ROW
 expect_regional_by_table_recommendation  64         0.9375                  1                       'ap-southeast-2'  1                       REGIONAL BY TABLE IN 'ap-southeast-2'
 
+
+statement ok
+CREATE TABLE test_update (i int, j int, k int, l int, constraint "primary" PRIMARY KEY (i, k))
+
+statement ok
+INSERT INTO test_update VALUES (1,1,1,1),(2,2,2,2),(3,3,3,3)
+
+statement ok
+UPDATE test_update SET l = 4 where i = 1
+
+statement ok
+UPDATE test_update SET j = 5 where j = 3
+
+# Not sure why we're getting an extra read here on each row.  I'd think it should only have
+# one read for the updating row.
+query TTII colnames,retry
+SELECT crdb_region, tab, reads, writes FROM crdb_internal_auto_multi_region_row where tab = 'test_update' order by (crdb_region, tab, reads, writes)
+----
+crdb_region     tab          reads  writes
+ap-southeast-2  test_update  1      1
+ap-southeast-2  test_update  1      2
+ap-southeast-2  test_update  2      2
+
 statement ok
 ALTER DATABASE db SET AUTOMATIC MULTIREGION OFF
 
@@ -214,19 +237,5 @@ SHOW TABLES
 public  expect_global_recommendation             table  root  0  REGIONAL BY TABLE IN PRIMARY REGION
 public  expect_regional_by_row                   table  root  0  REGIONAL BY TABLE IN PRIMARY REGION
 public  expect_regional_by_table_recommendation  table  root  0  REGIONAL BY TABLE IN PRIMARY REGION
+public  test_update                              table  root  0  REGIONAL BY TABLE IN PRIMARY REGION
 
-statement ok
-CREATE TABLE temp (i int, j int, k int, l int, constraint "primary" PRIMARY KEY (i, k))
-
-statement ok
-INSERT INTO temp VALUES (1,1,1,1),(2,2,2,2),(3,3,3,3)
-
-statement ok
-UPDATE temp SET l = 4 where i = 1
-
-statement ok
-UPDATE temp SET j = 5 where j = 3
-
-query IIII
-SELECT * FROM temp
-----
