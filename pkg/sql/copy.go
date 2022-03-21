@@ -200,6 +200,7 @@ func newCopyMachine(
 	c.rowsMemAcc = c.p.extendedEvalCtx.Mon.MakeBoundAccount()
 	c.bufMemAcc = c.p.extendedEvalCtx.Mon.MakeBoundAccount()
 	c.processRows = c.insertRows
+	log.Infof(ctx, "creating new copy machine: %v\n", c)
 	return c, nil
 }
 
@@ -226,6 +227,7 @@ type copyTxnOpt struct {
 func (c *copyMachine) run(ctx context.Context) error {
 	defer c.rowsMemAcc.Close(ctx)
 	defer c.bufMemAcc.Close(ctx)
+	log.Infof(ctx, "Starting to load data in \"run\"")
 
 	format := pgwirebase.FormatText
 	if c.format == tree.CopyFormatBinary {
@@ -240,6 +242,8 @@ func (c *copyMachine) run(ctx context.Context) error {
 	readBuf := pgwirebase.MakeReadBuffer(
 		pgwirebase.ReadBufferOptionWithClusterSettings(&c.p.execCfg.Settings.SV),
 	)
+
+	log.Infof(ctx, "Data read in")
 
 	switch c.format {
 	case tree.CopyFormatText:
@@ -287,12 +291,15 @@ Loop:
 
 		switch typ {
 		case pgwirebase.ClientMsgCopyData:
+			log.Infof(ctx, "Copying data")
 			if err := c.processCopyData(
 				ctx, string(readBuf.Msg), false, /* final */
 			); err != nil {
+				log.Infof(ctx, "Error on copying data: %s. readBuf: %v", err.Error(), readBuf)
 				return err
 			}
 		case pgwirebase.ClientMsgCopyDone:
+			log.Infof(ctx, "Copy done")
 			if err := c.processCopyData(
 				ctx, "" /* data */, true, /* final */
 			); err != nil {
@@ -300,10 +307,13 @@ Loop:
 			}
 			break Loop
 		case pgwirebase.ClientMsgCopyFail:
+			log.Infof(ctx, "Copy cancelled")
 			return errors.Newf("client canceled COPY")
 		case pgwirebase.ClientMsgFlush, pgwirebase.ClientMsgSync:
 			// Spec says to "ignore Flush and Sync messages received during copy-in mode".
+			log.Infof(ctx, "Copy flush or sync")
 		default:
+			log.Infof(ctx, "unrecognized error")
 			return pgwirebase.NewUnrecognizedMsgTypeErr(typ)
 		}
 	}
@@ -314,6 +324,7 @@ Loop:
 	tag := []byte(dummy.StatementTag())
 	tag = append(tag, ' ')
 	tag = strconv.AppendInt(tag, int64(c.insertedRows), 10 /* base */)
+	log.Infof(ctx, "finalizing")
 	return c.conn.SendCommandComplete(tag)
 }
 
@@ -406,6 +417,7 @@ func (c *copyMachine) readCSVData(ctx context.Context, final bool) (brk bool, er
 	// quoted field, and therefore signifies the end of a CSV record.
 	for {
 		line, err := c.buf.ReadBytes(lineDelim)
+		log.Infof(ctx, "Reading line: %v", line)
 		fullLine = append(fullLine, line...)
 		if err != nil {
 			if err == io.EOF {

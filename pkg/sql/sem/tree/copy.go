@@ -26,6 +26,7 @@ type CopyOptions struct {
 	CopyFormat  CopyFormat
 	Delimiter   Expr
 	Null        Expr
+	Escape      Expr
 }
 
 var _ NodeFormatter = &CopyOptions{}
@@ -77,6 +78,12 @@ func (o *CopyOptions) Format(ctx *FmtCtx) {
 		maybeAddSep()
 		ctx.WriteString("NULL ")
 		ctx.FormatNode(o.Null)
+		addSep = true
+	}
+	if o.Escape != nil {
+		maybeAddSep()
+		ctx.WriteString("ESCAPE ")
+		ctx.FormatNode(o.Escape)
 		addSep = true
 	}
 	if o.Destination != nil {

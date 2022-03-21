@@ -1806,10 +1806,10 @@ func (ex *connExecutor) execCmd() error {
 		return err // err could be io.EOF
 	}
 
-	if log.ExpensiveLogEnabled(ctx, 2) || ex.eventLog != nil {
-		ex.sessionEventf(ctx, "[%s pos:%d] executing %s",
-			ex.machine.CurState(), pos, cmd)
-	}
+	//if log.ExpensiveLogEnabled(ctx, 2) || ex.eventLog != nil {
+	log.Infof(ctx, "[%s pos:%d] executing %s",
+		ex.machine.CurState(), pos, cmd)
+	//}
 
 	var ev fsm.Event
 	var payload fsm.EventPayload

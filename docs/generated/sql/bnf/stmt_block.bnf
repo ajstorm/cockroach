@@ -1845,6 +1845,7 @@ copy_options ::=
 	| 'CSV'
 	| 'DELIMITER' string_or_placeholder
 	| 'NULL' string_or_placeholder
+	| 'ESCAPE' string_or_placeholder
 
 db_object_name_component ::=
 	name

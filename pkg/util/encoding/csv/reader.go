@@ -64,11 +64,13 @@ package csv
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/errors"
 )
 
@@ -385,6 +387,8 @@ parseField:
 		err = errRead
 	}
 
+	ctx := context.Background()
+
 	// Create a single string and create slices out of it.
 	// This pins the memory of the fields together, but allocates once.
 	str := string(r.recordBuffer) // Convert to string once to batch allocations
@@ -403,6 +407,7 @@ parseField:
 	if r.FieldsPerRecord > 0 {
 		if len(dst) != r.FieldsPerRecord && err == nil {
 			err = &ParseError{StartLine: recLine, Line: recLine, Err: ErrFieldCount}
+			log.Infof(ctx, "Error with column mismatch: dst = %d, fpr = %d", len(dst), r.FieldsPerRecord)
 		}
 	} else if r.FieldsPerRecord == 0 {
 		r.FieldsPerRecord = len(dst)

@@ -3450,7 +3450,7 @@ opt_with_options:
     $$.val = nil
   }
 
-// The COPY grammar in postgres has 3 different versions, all of which are supported by postgres:
+// The COPY grammar in postgres has 3 differ
 // 1) The "really old" syntax from v7.2 and prior
 // 2) Pre 9.0 using hard-wired, space-separated options
 // 3) The current and preferred options using comma-separated generic identifiers instead of keywords.
@@ -3518,6 +3518,10 @@ copy_options:
 | NULL string_or_placeholder
   {
     $$.val = &tree.CopyOptions{Null: $2.expr()}
+  }
+| ESCAPE string_or_placeholder
+  {
+    $$.val = &tree.CopyOptions{Escape: $2.expr()}
   }
 
 // %Help: CANCEL
