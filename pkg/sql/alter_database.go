@@ -13,6 +13,7 @@ package sql
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/keys"
@@ -648,9 +649,14 @@ func (n *alterDatabaseDropRegionNode) Next(runParams) (bool, error) { return fal
 func (n *alterDatabaseDropRegionNode) Values() tree.Datums          { return tree.Datums{} }
 func (n *alterDatabaseDropRegionNode) Close(context.Context)        {}
 
+// Default to no sampling.
+const defaultSamplingRate = 1.0
+const minSamplingRate = math.SmallestNonzeroFloat32
+
 type alterDatabaseAutoMultiRegionNode struct {
-	n    *tree.AlterDatabaseAutoMultiRegion
-	desc *dbdesc.Mutable
+	n        *tree.AlterDatabaseAutoMultiRegion
+	desc     *dbdesc.Mutable
+	sampling float32
 }
 
 // AlterDatabaseAutoMultiRegion transforms a tree.AlterDatabaseAutoMultiRegion
@@ -670,14 +676,24 @@ func (p *planner) AlterDatabaseAutoMultiRegion(
 			"can not enable automatic multi-region on non-multi-region database")
 	}
 
+	var sampling float32
+	sampling = defaultSamplingRate
+	if n.Options != nil {
+		sampling = n.Options.Sampling
+	}
+	if sampling < minSamplingRate {
+		sampling = minSamplingRate
+	}
+
 	return &alterDatabaseAutoMultiRegionNode{
 		n,
 		dbDesc,
+		sampling,
 	}, nil
 }
 
 func (n *alterDatabaseAutoMultiRegionNode) setAutoMultiRegionOnAllTables(
-	params runParams, val bool,
+	params runParams, val bool, sampling float32,
 ) error {
 	b := params.p.Txn().NewBatch()
 	if err := params.p.forEachMutableTableInDatabase(
@@ -689,6 +705,7 @@ func (n *alterDatabaseAutoMultiRegionNode) setAutoMultiRegionOnAllTables(
 				return err
 			}
 			tbDesc.AutoMultiRegionEnabled = val
+			tbDesc.AutoMultiRegionSampling = sampling
 			return params.p.writeSchemaChangeToBatch(ctx, tbDesc, b)
 		},
 	); err != nil {
@@ -911,7 +928,7 @@ func (n *alterDatabaseAutoMultiRegionNode) startExec(params runParams) error {
 			return err
 		}
 
-		return n.setAutoMultiRegionOnAllTables(params, false)
+		return n.setAutoMultiRegionOnAllTables(params, false, n.sampling)
 	}
 
 	// Create the tracking tables.
@@ -920,6 +937,7 @@ func (n *alterDatabaseAutoMultiRegionNode) startExec(params runParams) error {
 	}
 
 	n.desc.AutoMultiRegionEnabled = true
+	n.desc.AutoMultiRegionSampling = n.sampling
 	if err := params.p.writeNonDropDatabaseChange(
 		params.ctx,
 		n.desc,
@@ -928,7 +946,7 @@ func (n *alterDatabaseAutoMultiRegionNode) startExec(params runParams) error {
 		return err
 	}
 
-	return n.setAutoMultiRegionOnAllTables(params, true)
+	return n.setAutoMultiRegionOnAllTables(params, true, n.sampling)
 
 	// TODO: Create the table-specific tables
 	// TODO: To complete the work to create the table above, create a fake

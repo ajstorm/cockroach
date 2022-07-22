@@ -10,6 +10,8 @@
 
 package tree
 
+import "fmt"
+
 // AlterDatabaseOwner represents a ALTER DATABASE OWNER TO statement.
 type AlterDatabaseOwner struct {
 	Name  Name
@@ -67,8 +69,13 @@ func (node *AlterDatabaseDropRegion) Format(ctx *FmtCtx) {
 // AlterDatabaseAutoMultiRegion represents an ALTER DATABASE AUTOMATIC MULTIREGION
 // statement.
 type AlterDatabaseAutoMultiRegion struct {
-	Name  Name
-	State bool
+	Name    Name
+	State   bool
+	Options *AutoMultiRegionOptions
+}
+
+type AutoMultiRegionOptions struct {
+	Sampling float32
 }
 
 var _ Statement = &AlterDatabaseAutoMultiRegion{}
@@ -82,6 +89,11 @@ func (node *AlterDatabaseAutoMultiRegion) Format(ctx *FmtCtx) {
 		ctx.WriteString("ON")
 	} else {
 		ctx.WriteString("OFF")
+	}
+	// FIXME: Pull this out into a separate node formatter.
+	if node.Options != nil {
+		ctx.WriteString(" WITH SAMPLING ")
+		fmt.Fprintf(ctx, "%g", node.Options.Sampling)
 	}
 }
 

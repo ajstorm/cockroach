@@ -1,2 +1,3 @@
 alter_database_auto_multi_region_stmt ::=
 	'ALTER' 'DATABASE' database_name 'SET' 'AUTOMATIC' 'MULTIREGION' auto_multi_region_state
+	| 'ALTER' 'DATABASE' database_name 'SET' 'AUTOMATIC' 'MULTIREGION' auto_multi_region_state 'WITH' auto_multi_region_options

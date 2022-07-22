@@ -399,6 +399,7 @@ func (n *createTableNode) startExec(params runParams) error {
 
 	// FIXME: This should be put somewhere more appropriate.
 	desc.AutoMultiRegionEnabled = n.dbDesc.IsAutoMultiRegionEnabled()
+	desc.AutoMultiRegionSampling = n.dbDesc.AutoMultiRegionSamplingRate()
 
 	// Descriptor written to store here.
 	if err := params.p.createDescriptorWithID(

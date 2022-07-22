@@ -236,7 +236,12 @@ type DatabaseDescriptor interface {
 	// GetDefaultPrivilegeDescriptor returns the default privileges for this
 	// database.
 	GetDefaultPrivilegeDescriptor() DefaultPrivilegeDescriptor
+	// IsAutoMultiRegionEnabled returns whether or not auto multi-region is
+	// enabled.
 	IsAutoMultiRegionEnabled() bool
+	// AutoMultiRegionSamplingRate returns the rate at which we're sampling
+	// while recording auto multi-region statistics.
+	AutoMultiRegionSamplingRate() float32
 }
 
 // TableDescriptor is an interface around the table descriptor types.
@@ -598,6 +603,7 @@ type TableDescriptor interface {
 	GetRegionalByRowTableRegionColumnName() (tree.Name, error)
 
 	IsAutoMultiRegionEnabled() bool
+	AutoMultiRegionSamplingRate() float32
 }
 
 // TypeDescriptor will eventually be called typedesc.Descriptor.

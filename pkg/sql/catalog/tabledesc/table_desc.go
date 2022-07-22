@@ -453,3 +453,9 @@ func (desc *wrapper) AllMutations() []catalog.Mutation {
 func (desc *wrapper) IsAutoMultiRegionEnabled() bool {
 	return desc.AutoMultiRegionEnabled
 }
+
+// AutoMultiRegionSamplingRate returns the sampling rate for auto multi-region
+// data collection.
+func (desc *wrapper) AutoMultiRegionSamplingRate() float32 {
+	return desc.AutoMultiRegionSampling
+}

@@ -16,7 +16,9 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
+	random "math/rand"
 	"strings"
 
 	"github.com/cockroachdb/cockroach/pkg/col/coldata"
@@ -118,16 +120,29 @@ func (r updateRecord) UpdateForRead() error {
 	// If we can't find a region on the gateway node, there's no reporting to
 	// do here.
 	if found {
-		autoMultiRegionTableStatement := fmt.Sprintf(
-			`INSERT INTO %s.%s (crdb_region, tab, reads, writes) VALUES ('%s', '%s', %d, 0) ON CONFLICT (crdb_region, tab) DO UPDATE SET reads = %q.reads + %d`,
-			tree.AutoMultiRegionSchemaName,
-			tree.AutoMultiRegionTableTrackingTableName,
-			region,
-			desc.GetName(),
-			rowsRead,
-			tree.AutoMultiRegionTableTrackingTableName,
-			rowsRead,
-		)
+		// FIXME: This can be cleaned up a bit. For example, it would be nice
+		//  if we had more comments as to what we're doing in here. Also,
+		//  address fixme's below and remove commented out code.
+		inverseSamplingRate := uint64(1 / desc.AutoMultiRegionSamplingRate())
+		sampledRowsRead := int(float32(rowsRead) * desc.AutoMultiRegionSamplingRate())
+		rem := uint64(rowsRead) % inverseSamplingRate
+		if random.Float32() < (float32(rem) / float32(inverseSamplingRate)) {
+			sampledRowsRead++
+		}
+		autoMultiRegionTableStatement := ""
+
+		if sampledRowsRead != 0 {
+			autoMultiRegionTableStatement = fmt.Sprintf(
+				`INSERT INTO %s.%s (crdb_region, tab, reads, writes) VALUES ('%s', '%s', %d, 0) ON CONFLICT (crdb_region, tab) DO UPDATE SET reads = %q.reads + %d`,
+				tree.AutoMultiRegionSchemaName,
+				tree.AutoMultiRegionTableTrackingTableName,
+				region,
+				desc.GetName(),
+				sampledRowsRead,
+				tree.AutoMultiRegionTableTrackingTableName,
+				sampledRowsRead,
+			)
+		}
 
 		// Generate the row tracking insert statement
 		idx := desc.GetPrimaryIndex()
@@ -154,22 +169,21 @@ func (r updateRecord) UpdateForRead() error {
 		//		colListString += ")"
 		//		onConflictString += ")"
 
-		firstVal := true
-		valuesString := ""
+		rowRecorded := false
+		finalValuesString := ""
 		for i := 0; i < bat.Length(); i++ {
 			keyString := ""
-			if firstVal {
-				firstVal = false
-			} else {
-				valuesString += ", "
+			rowValuesString := ""
+			if rowRecorded {
+				rowValuesString += ", "
 			}
-			valuesString += fmt.Sprintf(`('%s', '%s', 1, 0`, region, desc.GetName())
+			rowValuesString += fmt.Sprintf(`('%s', '%s', 1, 0`, region, desc.GetName())
 			t := colexectestutils.GetTupleFromBatch(bat, i)
 			for j := 0; j < len(r.cols); j++ {
 				if !colsIsInPK[j] {
 					continue
 				}
-				//	valuesString += fmt.Sprintf(", %v", t[j])
+				//	finalValuesString += fmt.Sprintf(", %v", t[j])
 				keyString += fmt.Sprintf("%v", t[j])
 			}
 
@@ -178,10 +192,34 @@ func (r updateRecord) UpdateForRead() error {
 			bv := []byte(keyString)
 			hasher.Write(bv)
 			sum := hasher.Sum(nil)
-			// FIXME: Storing this as a string for now (as it's easier), but
-			//  long-term this should be a byte array.
-			pkSha := base64.URLEncoding.EncodeToString(sum)
-			valuesString += fmt.Sprintf(`, '%s')`, pkSha)
+
+			// Determine if we should write this row or not, based on sampling.
+			shaQualifies := false
+			if desc.AutoMultiRegionSamplingRate() == 1 {
+				shaQualifies = true
+			} else {
+				partialSha := sum[:8]
+				partialInt := binary.BigEndian.Uint64(partialSha)
+				if partialInt%inverseSamplingRate == 0 {
+					shaQualifies = true
+				}
+			}
+
+			if shaQualifies {
+				// FIXME: Storing this as a string for now (as it's easier), but
+				//  long-term this should be a byte array.
+				pkSha := base64.URLEncoding.EncodeToString(sum)
+				rowValuesString += fmt.Sprintf(`, '%s')`, pkSha)
+				finalValuesString += rowValuesString
+				rowRecorded = true
+			}
+		}
+
+		// Only write the data if one or more rows above were recorded after
+		// sampling.
+		if autoMultiRegionTableStatement == "" &&
+			finalValuesString == "" {
+			return nil
 		}
 
 		// FIXME: Turn this into a function for reliable table generation.
@@ -191,7 +229,7 @@ func (r updateRecord) UpdateForRead() error {
 			tree.AutoMultiRegionSchemaName,
 			rowTableName,
 			colListString,
-			valuesString,
+			finalValuesString,
 			onConflictString,
 			rowTableName,
 		)

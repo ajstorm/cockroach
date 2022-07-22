@@ -1116,6 +1116,7 @@ unreserved_keyword ::=
 	| 'SETTING'
 	| 'SETTINGS'
 	| 'STATUS'
+	| 'SAMPLING'
 	| 'SAVEPOINT'
 	| 'SCANS'
 	| 'SCATTER'
@@ -1835,6 +1836,7 @@ alter_database_survival_goal_stmt ::=
 
 alter_database_auto_multi_region_stmt ::=
 	'ALTER' 'DATABASE' database_name 'SET' 'AUTOMATIC' 'MULTIREGION' auto_multi_region_state
+	| 'ALTER' 'DATABASE' database_name 'SET' 'AUTOMATIC' 'MULTIREGION' auto_multi_region_state 'WITH' auto_multi_region_options
 
 alter_database_primary_region_stmt ::=
 	'ALTER' 'DATABASE' database_name primary_region_clause
@@ -2317,6 +2319,9 @@ survival_goal_clause ::=
 auto_multi_region_state ::=
 	'ON'
 	| 'OFF'
+
+auto_multi_region_options ::=
+	'SAMPLING' 'FCONST'
 
 primary_region_clause ::=
 	'PRIMARY' 'REGION' opt_equal region_name

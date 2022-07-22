@@ -153,6 +153,12 @@ func (desc *immutable) IsAutoMultiRegionEnabled() bool {
 	return desc.AutoMultiRegionEnabled
 }
 
+// AutoMultiRegionSamplingRate returns the rate at which to sample auto
+// multi-region data.
+func (desc *immutable) AutoMultiRegionSamplingRate() float32 {
+	return desc.AutoMultiRegionSampling
+}
+
 // MultiRegionEnumID returns the ID of the multi-region enum if the database
 // is a multi-region database, and an error otherwise.
 func (desc *immutable) MultiRegionEnumID() (descpb.ID, error) {

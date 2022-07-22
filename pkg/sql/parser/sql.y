@@ -657,6 +657,9 @@ func (u *sqlSymUnion) referenceActions() tree.ReferenceActions {
 func (u *sqlSymUnion) createStatsOptions() *tree.CreateStatsOptions {
     return u.val.(*tree.CreateStatsOptions)
 }
+func (u *sqlSymUnion) autoMultiRegionOptions() *tree.AutoMultiRegionOptions {
+    return u.val.(*tree.AutoMultiRegionOptions)
+}
 func (u *sqlSymUnion) scrubOptions() tree.ScrubOptions {
     return u.val.(tree.ScrubOptions)
 }
@@ -834,7 +837,7 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 %token <str> RELEASE RESET RESTORE RESTRICT RESTRICTED RESUME RETURNING RETRY REVISION_HISTORY
 %token <str> REVOKE RIGHT ROLE ROLES ROLLBACK ROLLUP ROUTINES ROW ROWS RSHIFT RULE RUNNING
 
-%token <str> SAVEPOINT SCANS SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SELECT SEQUENCE SEQUENCES
+%token <str> SAMPLING SAVEPOINT SCANS SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SELECT SEQUENCE SEQUENCES
 %token <str> SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETS SETTING SETTINGS
 %token <str> SHARE SHOW SIMILAR SIMPLE SKIP SKIP_LOCALITIES_CHECK SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME SPLIT SQL
@@ -956,6 +959,8 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 
 // ALTER DEFAULT PRIVILEGES
 %type <tree.Statement> alter_default_privileges_stmt
+
+%type <*tree.AutoMultiRegionOptions> auto_multi_region_options
 
 %type <tree.Statement> backup_stmt
 %type <tree.Statement> begin_stmt
@@ -1140,6 +1145,7 @@ func (u *sqlSymUnion) setVar() *tree.SetVar {
 %type <tree.AlterIndexCmds> alter_index_cmds
 
 %type <tree.Expr> auto_multi_region_state
+%type <tree.Expr> auto_multi_region_options
 
 %type <tree.DropBehavior> opt_drop_behavior
 
@@ -1768,6 +1774,14 @@ alter_database_auto_multi_region_stmt:
       State: $7.bool(),
     }
   }
+| ALTER DATABASE database_name SET AUTOMATIC MULTIREGION auto_multi_region_state WITH auto_multi_region_options
+  {
+    $$.val = &tree.AlterDatabaseAutoMultiRegion{
+      Name: tree.Name($3),
+      State: $7.bool(),
+      Options: $9.autoMultiRegionOptions(),
+    }
+  }
 
 alter_database_primary_region_stmt:
   ALTER DATABASE database_name primary_region_clause
@@ -2384,6 +2398,18 @@ auto_multi_region_state:
     $$.val = false
   }
 
+auto_multi_region_options:
+  SAMPLING FCONST
+  {
+    value, _ := constant.Float32Val($2.numVal().AsConstantValue())
+    if value < 0.0 || value >= 1.0 {
+      sqllex.Error("SAMPLING rate must be between 0 and 1")
+      return 1
+    }
+    $$.val = &tree.AutoMultiRegionOptions{
+      Sampling: value,
+    }
+  }
 
 opt_drop_behavior:
   CASCADE
@@ -13405,6 +13431,7 @@ unreserved_keyword:
 | SETTING
 | SETTINGS
 | STATUS
+| SAMPLING
 | SAVEPOINT
 | SCANS
 | SCATTER

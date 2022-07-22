@@ -1235,6 +1235,10 @@ message TableDescriptor {
 
   // Is auto multi-region enabled
   optional bool auto_multi_region_enabled = 47 [(gogoproto.nullable) = false];
+
+  // FIXME: This should be removed and put into a struct with the field above
+  // Sampling to use for auto multi-region
+  optional float auto_multi_region_sampling = 48 [(gogoproto.nullable) = false];
 }
 
 // SurvivalGoal is the survival goal for a database.
@@ -1321,6 +1325,10 @@ message DatabaseDescriptor {
 
   // Is auto multi-region enabled
   optional bool auto_multi_region_enabled = 12 [(gogoproto.nullable) = false];
+
+  // FIXME: This should be removed and put into a struct with the field above
+  // Sampling to use for auto multi-region
+  optional float auto_multi_region_sampling = 48 [(gogoproto.nullable) = false];
 }
 
 // TypeDescriptor represents a user defined type and is stored in a structured
