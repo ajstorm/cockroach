@@ -55,9 +55,8 @@ const (
 	applierQueryBase = `
 WITH data (%s)
 AS (VALUES (%s))
-SELECT [FUNCTION %d]('%s', data, existing, ROW(%s), existing.crdb_internal_mvcc_timestamp, existing.crdb_replication_origin_timestamp, $%d, $%d) AS decision
-FROM data LEFT JOIN [%d as existing]
-%s`
+SELECT [FUNCTION %d]('%s', data, $%d, $%d) AS decision
+FROM data`
 	applierUpsertQueryBase = `UPSERT INTO [%d as t] (%s) VALUES (%s)`
 	applierDeleteQueryBase = `DELETE FROM [%d as t] WHERE %s`
 )
@@ -304,6 +303,7 @@ func (aq *applierQuerier) queryRowExParsed(
 	stmt statements.Statement[tree.Statement],
 	datums ...interface{},
 ) (tree.Datums, error) {
+	log.Warningf(ctx, "parsing %s (query: %s) %+v", opName, stmt.SQL, datums)
 	if row, err := ie.QueryRowExParsed(ctx, opName, txn, o, stmt, datums...); err != nil {
 		log.Warningf(ctx, "%s failed (query: %s): %s", opName, stmt.SQL, err.Error())
 		return nil, err
@@ -372,12 +372,9 @@ func makeApplierApplyQueries(
 		colCount          = len(inputColumnNames)
 		colNames          = escapedColumnNameList(inputColumnNames)
 		valStr            = valueStringForNumItems(colCount, 1)
-		prevValStr        = valueStringForNumItems(colCount, colCount+1)
 		remoteMVCCIdx     = (colCount * 2) + 1
 		remotePrevMVCCIdx = remoteMVCCIdx + 1
 	)
-
-	joinClause := makeApplierJoinClause(td.TableDesc().PrimaryIndex.KeyColumnNames)
 
 	statements := make([]statements.Statement[tree.Statement], 3)
 	for statementIdx, mutType := range map[int]replicationMutationType{
@@ -390,11 +387,8 @@ func makeApplierApplyQueries(
 			valStr,
 			udfOID,
 			mutType,
-			prevValStr,
 			remoteMVCCIdx,
 			remotePrevMVCCIdx,
-			dstTableDescID,
-			joinClause,
 		)
 		var err error
 		statements[statementIdx], err = parser.ParseOne(q)
