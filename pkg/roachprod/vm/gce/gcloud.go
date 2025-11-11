@@ -2767,7 +2767,7 @@ func parseMachineType(
 }
 
 // Given a machine type, return the allowed number (> 0) of local SSDs, sorted in ascending order.
-// N.B. Only n1, n2, n2d and c2 instances are supported since we don't typically use other instance types.
+// N.B. Only n1, n2, n2d, n4, and c2 instances are supported since we don't typically use other instance types.
 // Consult https://cloud.google.com/compute/docs/disks/#local_ssd_machine_type_restrictions for other types of instances.
 func AllowedLocalSSDCount(machineType string) ([]int, error) {
 
