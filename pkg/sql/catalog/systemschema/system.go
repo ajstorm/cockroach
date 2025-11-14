@@ -1435,6 +1435,39 @@ CREATE TABLE public.inspect_errors (
     CONSTRAINT "primary" PRIMARY KEY (table_id ASC, kind ASC),
     FAMILY "primary" (table_id, kind, job_ids)
   );`
+
+	// AIConversationsTableSchema stores AI assistant conversation sessions.
+	// This table tracks conversation metadata and enables multi-turn dialog
+	// with context preservation.
+	AIConversationsTableSchema = `
+  CREATE TABLE system.ai_conversations (
+    id               UUID DEFAULT gen_random_uuid() NOT NULL,
+    user_name        STRING NOT NULL,
+    cluster_id       UUID NOT NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_message_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    title            STRING,
+    CONSTRAINT "primary" PRIMARY KEY (id ASC),
+    INDEX user_conversations_idx (user_name ASC, last_message_at DESC),
+    FAMILY "primary" (id, user_name, cluster_id, created_at, last_message_at, title)
+  );`
+
+	// AIMessagesTableSchema stores individual messages within AI conversations.
+	// This includes user prompts, assistant responses, and tool call details.
+	AIMessagesTableSchema = `
+  CREATE TABLE system.ai_messages (
+    id                UUID DEFAULT gen_random_uuid() NOT NULL,
+    conversation_id   UUID NOT NULL REFERENCES system.ai_conversations(id) ON DELETE CASCADE,
+    role              STRING NOT NULL,
+    content           STRING,
+    tool_calls        JSONB,
+    tool_call_id      STRING,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    token_count       INT8,
+    CONSTRAINT "primary" PRIMARY KEY (id ASC),
+    INDEX conversation_messages_idx (conversation_id ASC, created_at ASC),
+    FAMILY "primary" (id, conversation_id, role, content, tool_calls, tool_call_id, created_at, token_count)
+  );`
 )
 
 func pk(name string) descpb.IndexDescriptor {
@@ -1680,6 +1713,8 @@ func MakeSystemTables() []SystemTable {
 		TransactionDiagnosticsTable,
 		StatementHintsTable,
 		TableStatisticsLocksTable,
+		AIConversationsTable,
+		AIMessagesTable,
 	}
 }
 
@@ -5540,6 +5575,94 @@ var (
 				KeyColumnNames:      []string{"table_id", "kind"},
 				KeyColumnDirections: []catenumpb.IndexColumn_Direction{catenumpb.IndexColumn_ASC, catenumpb.IndexColumn_ASC},
 				KeyColumnIDs:        []descpb.ColumnID{1, 2},
+			},
+		),
+	)
+
+	// AIConversationsTable stores AI assistant conversation metadata.
+	AIConversationsTable = makeSystemTable(
+		AIConversationsTableSchema,
+		systemTable(
+			catconstants.AIConversationsTableName,
+			descpb.InvalidID, // dynamically assigned
+			[]descpb.ColumnDescriptor{
+				{Name: "id", ID: 1, Type: types.Uuid, DefaultExpr: &genRandomUUIDString},
+				{Name: "user_name", ID: 2, Type: types.String},
+				{Name: "cluster_id", ID: 3, Type: types.Uuid},
+				{Name: "created_at", ID: 4, Type: types.TimestampTZ, DefaultExpr: &nowTZString},
+				{Name: "last_message_at", ID: 5, Type: types.TimestampTZ, DefaultExpr: &nowTZString},
+				{Name: "title", ID: 6, Type: types.String, Nullable: true},
+			},
+			[]descpb.ColumnFamilyDescriptor{
+				{
+					Name:        "primary",
+					ID:          0,
+					ColumnNames: []string{"id", "user_name", "cluster_id", "created_at", "last_message_at", "title"},
+					ColumnIDs:   []descpb.ColumnID{1, 2, 3, 4, 5, 6},
+				},
+			},
+			descpb.IndexDescriptor{
+				Name:                "primary",
+				ID:                  1,
+				Unique:              true,
+				KeyColumnNames:      []string{"id"},
+				KeyColumnDirections: singleASC,
+				KeyColumnIDs:        []descpb.ColumnID{1},
+			},
+			descpb.IndexDescriptor{
+				Name:                "user_conversations_idx",
+				ID:                  2,
+				Unique:              false,
+				Version:             descpb.StrictIndexColumnIDGuaranteesVersion,
+				KeyColumnNames:      []string{"user_name", "last_message_at"},
+				KeyColumnDirections: []catenumpb.IndexColumn_Direction{catenumpb.IndexColumn_ASC, catenumpb.IndexColumn_DESC},
+				KeyColumnIDs:        []descpb.ColumnID{2, 5},
+				KeySuffixColumnIDs:  []descpb.ColumnID{1},
+			},
+		),
+	)
+
+	// AIMessagesTable stores individual messages within AI conversations.
+	AIMessagesTable = makeSystemTable(
+		AIMessagesTableSchema,
+		systemTable(
+			catconstants.AIMessagesTableName,
+			descpb.InvalidID, // dynamically assigned
+			[]descpb.ColumnDescriptor{
+				{Name: "id", ID: 1, Type: types.Uuid, DefaultExpr: &genRandomUUIDString},
+				{Name: "conversation_id", ID: 2, Type: types.Uuid},
+				{Name: "role", ID: 3, Type: types.String},
+				{Name: "content", ID: 4, Type: types.String, Nullable: true},
+				{Name: "tool_calls", ID: 5, Type: types.Jsonb, Nullable: true},
+				{Name: "tool_call_id", ID: 6, Type: types.String, Nullable: true},
+				{Name: "created_at", ID: 7, Type: types.TimestampTZ, DefaultExpr: &nowTZString},
+				{Name: "token_count", ID: 8, Type: types.Int, Nullable: true},
+			},
+			[]descpb.ColumnFamilyDescriptor{
+				{
+					Name:        "primary",
+					ID:          0,
+					ColumnNames: []string{"id", "conversation_id", "role", "content", "tool_calls", "tool_call_id", "created_at", "token_count"},
+					ColumnIDs:   []descpb.ColumnID{1, 2, 3, 4, 5, 6, 7, 8},
+				},
+			},
+			descpb.IndexDescriptor{
+				Name:                "primary",
+				ID:                  1,
+				Unique:              true,
+				KeyColumnNames:      []string{"id"},
+				KeyColumnDirections: singleASC,
+				KeyColumnIDs:        []descpb.ColumnID{1},
+			},
+			descpb.IndexDescriptor{
+				Name:                "conversation_messages_idx",
+				ID:                  2,
+				Unique:              false,
+				Version:             descpb.StrictIndexColumnIDGuaranteesVersion,
+				KeyColumnNames:      []string{"conversation_id", "created_at"},
+				KeyColumnDirections: []catenumpb.IndexColumn_Direction{catenumpb.IndexColumn_ASC, catenumpb.IndexColumn_ASC},
+				KeyColumnIDs:        []descpb.ColumnID{2, 7},
+				KeySuffixColumnIDs:  []descpb.ColumnID{1},
 			},
 		),
 	)

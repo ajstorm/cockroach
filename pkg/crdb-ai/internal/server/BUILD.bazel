@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "server",
+    srcs = ["server.go"],
+    importpath = "github.com/cockroachdb/cockroach/pkg/crdb-ai/internal/server",
+    visibility = ["//pkg/crdb-ai:__subpackages__"],
+    deps = [
+        "//pkg/crdb-ai/internal/agent",
+        "@com_github_gin_gonic_gin//:gin",
+        "@com_github_rs_zerolog//log",
+        "@org_golang_x_time//rate",
+    ],
+)

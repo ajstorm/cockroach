@@ -1,0 +1,15 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "crdb-ai_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/cockroachdb/cockroach/pkg/crdb-ai",
+    visibility = ["//visibility:private"],
+    deps = ["//pkg/crdb-ai/cmd"],
+)
+
+go_binary(
+    name = "crdb-ai",
+    embed = [":crdb-ai_lib"],
+    visibility = ["//visibility:public"],
+)

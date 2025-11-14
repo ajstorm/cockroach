@@ -87,6 +87,7 @@ import { SnapshotRouter } from "src/views/tracez_v2/snapshotRoutes";
 import TransactionDetails from "src/views/transactions/transactionDetails";
 import "styl/app.styl";
 
+import { AIInsightsPage } from "@cockroachlabs/cluster-ui";
 import InsightsOverviewPage from "./views/insights/insightsOverview";
 import StatementInsightDetailsPage from "./views/insights/statementInsightDetailsPage";
 import TransactionInsightDetailsPage from "./views/insights/transactionInsightDetailsPage";
@@ -363,6 +364,13 @@ export const App: React.FC<AppProps> = (props: AppProps) => {
                           exact
                           path="/cluster-explorer"
                           component={ClusterExplorerPage}
+                        />
+
+                        {/* AI Insights */}
+                        <Route
+                          exact
+                          path="/ai-insights"
+                          component={AIInsightsPage}
                         />
 
                         {/* debug pages */}

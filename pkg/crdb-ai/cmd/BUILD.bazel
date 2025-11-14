@@ -1,0 +1,21 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "cmd",
+    srcs = [
+        "ask.go",
+        "root.go",
+        "server.go",
+    ],
+    importpath = "github.com/cockroachdb/cockroach/pkg/crdb-ai/cmd",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/crdb-ai/internal/agent",
+        "//pkg/crdb-ai/internal/db",
+        "//pkg/crdb-ai/internal/server",
+        "//pkg/crdb-ai/internal/tools",
+        "@com_github_rs_zerolog//:zerolog",
+        "@com_github_rs_zerolog//log",
+        "@com_github_spf13_cobra//:cobra",
+    ],
+)

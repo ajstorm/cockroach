@@ -2190,6 +2190,7 @@ func (s *topLevelServer) PreStart(ctx context.Context) error {
 			DisableKvLevelAdvancedDebug: false,
 		},
 		drpcEnabled,
+		s.tsServer, /* tsServer */
 	); err != nil {
 		return err
 	}

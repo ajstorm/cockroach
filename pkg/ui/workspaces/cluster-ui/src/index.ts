@@ -21,6 +21,7 @@ export * from "./filter";
 export * from "./highlightedText";
 export * from "./indexDetailsPage";
 export * from "./insights";
+export * from "./aiInsights";
 export * from "./jobs";
 export * from "./loading";
 export * from "./modal";

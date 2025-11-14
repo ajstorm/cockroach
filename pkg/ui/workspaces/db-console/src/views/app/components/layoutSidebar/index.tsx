@@ -24,12 +24,35 @@ interface RouteParam {
 
 type SidebarProps = RouteComponentProps & MapToStateProps;
 
+interface SidebarState {
+  chatCRDBEnabled: boolean;
+}
+
 /**
  * Sidebar represents the static navigation sidebar available on all pages. It
  * displays a number of graphic icons representing available pages; the icon of
  * the page which is currently active will be highlighted.
  */
-export class Sidebar extends React.Component<SidebarProps> {
+export class Sidebar extends React.Component<SidebarProps, SidebarState> {
+  constructor(props: SidebarProps) {
+    super(props);
+    this.state = {
+      chatCRDBEnabled: true, // Default to enabled
+    };
+  }
+
+  componentDidMount() {
+    // Check if CockroachDB Copilot is enabled via cluster setting
+    fetch("/api/v2/ai/enabled")
+      .then(response => response.json())
+      .then(data => {
+        this.setState({ chatCRDBEnabled: data.enabled });
+      })
+      .catch(error => {
+        console.error("Failed to check CockroachDB Copilot enabled status:", error);
+        // Default to enabled on error
+      });
+  }
   readonly routes: RouteParam[] = [
     { path: "/overview", text: "Overview", activeFor: ["/node"] },
     { path: "/metrics", text: "Metrics", activeFor: [] },
@@ -63,6 +86,12 @@ export class Sidebar extends React.Component<SidebarProps> {
       text: "Advanced Debug",
       activeFor: ["/reports", "/data-distribution", "/raft", "/keyvisualizer"],
       ignoreFor: ["/reports/network", "/reports/range"],
+    },
+    {
+      path: "/ai-insights",
+      text: "Copilot",
+      activeFor: ["/ai-insights"],
+      isHidden: () => !this.state.chatCRDBEnabled,
     },
   ];
 

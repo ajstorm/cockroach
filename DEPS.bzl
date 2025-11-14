@@ -791,11 +791,9 @@ def go_deps():
         name = "com_github_azure_azure_sdk_for_go_sdk_azcore",
         build_file_proto_mode = "disable_global",
         importpath = "github.com/Azure/azure-sdk-for-go/sdk/azcore",
-        sha256 = "efda0033183b299ff74759eef15c59a8302cbd3f9ef7b10d3e574fcf06006f61",
-        strip_prefix = "github.com/Azure/azure-sdk-for-go/sdk/azcore@v1.11.1",
-        urls = [
-            "https://storage.googleapis.com/cockroach-godeps/gomod/github.com/Azure/azure-sdk-for-go/sdk/azcore/com_github_azure_azure_sdk_for_go_sdk_azcore-v1.11.1.zip",
-        ],
+        # TODO: mirror this repo (to fix, run `./dev generate bazel --mirror`)
+        sum = "h1:g0EZJwz7xkXQiZAI5xi9f3WWFYBlX1CPTrR+NDToRkQ=",
+        version = "v1.17.0",
     )
     go_repository(
         name = "com_github_azure_azure_sdk_for_go_sdk_azidentity",
@@ -811,11 +809,9 @@ def go_deps():
         name = "com_github_azure_azure_sdk_for_go_sdk_internal",
         build_file_proto_mode = "disable_global",
         importpath = "github.com/Azure/azure-sdk-for-go/sdk/internal",
-        sha256 = "a5245f34ce09a5141c847b07237d52c1fa3305e44e41fcb4466a002b866941cb",
-        strip_prefix = "github.com/Azure/azure-sdk-for-go/sdk/internal@v1.8.0",
-        urls = [
-            "https://storage.googleapis.com/cockroach-godeps/gomod/github.com/Azure/azure-sdk-for-go/sdk/internal/com_github_azure_azure_sdk_for_go_sdk_internal-v1.8.0.zip",
-        ],
+        # TODO: mirror this repo (to fix, run `./dev generate bazel --mirror`)
+        sum = "h1:ywEEhmNahHBihViHepv3xPBn1663uRv2t2q/ESv9seY=",
+        version = "v1.10.0",
     )
     go_repository(
         name = "com_github_azure_azure_sdk_for_go_sdk_keyvault_azkeys",
@@ -6975,6 +6971,14 @@ def go_deps():
         ],
     )
     go_repository(
+        name = "com_github_openai_openai_go",
+        build_file_proto_mode = "disable_global",
+        importpath = "github.com/openai/openai-go",
+        # TODO: mirror this repo (to fix, run `./dev generate bazel --mirror`)
+        sum = "h1:NBQCnXzqOTv5wsgNC36PrFEiskGfO5wccfCWDo9S1U0=",
+        version = "v1.12.0",
+    )
+    go_repository(
         name = "com_github_opencontainers_go_digest",
         build_file_proto_mode = "disable_global",
         importpath = "github.com/opencontainers/go-digest",
@@ -8314,14 +8318,36 @@ def go_deps():
         ],
     )
     go_repository(
+        name = "com_github_tidwall_gjson",
+        build_file_proto_mode = "disable_global",
+        importpath = "github.com/tidwall/gjson",
+        # TODO: mirror this repo (to fix, run `./dev generate bazel --mirror`)
+        sum = "h1:uo0p8EbA09J7RQaflQ1aBRffTR7xedD2bcIVSYxLnkM=",
+        version = "v1.14.4",
+    )
+    go_repository(
+        name = "com_github_tidwall_match",
+        build_file_proto_mode = "disable_global",
+        importpath = "github.com/tidwall/match",
+        # TODO: mirror this repo (to fix, run `./dev generate bazel --mirror`)
+        sum = "h1:+Ho715JplO36QYgwN9PGYNhgZvoUSc9X2c80KVTi+GA=",
+        version = "v1.1.1",
+    )
+    go_repository(
         name = "com_github_tidwall_pretty",
         build_file_proto_mode = "disable_global",
         importpath = "github.com/tidwall/pretty",
-        sha256 = "3b25a1a0fe7688989326aaa1ca1c74c972b30152ef2a756fbf2d217a827fc07d",
-        strip_prefix = "github.com/tidwall/pretty@v1.0.0",
-        urls = [
-            "https://storage.googleapis.com/cockroach-godeps/gomod/github.com/tidwall/pretty/com_github_tidwall_pretty-v1.0.0.zip",
-        ],
+        # TODO: mirror this repo (to fix, run `./dev generate bazel --mirror`)
+        sum = "h1:qjsOFOWWQl+N3RsoF5/ssm1pHmJJwhjlSbZ51I6wMl4=",
+        version = "v1.2.1",
+    )
+    go_repository(
+        name = "com_github_tidwall_sjson",
+        build_file_proto_mode = "disable_global",
+        importpath = "github.com/tidwall/sjson",
+        # TODO: mirror this repo (to fix, run `./dev generate bazel --mirror`)
+        sum = "h1:kLy8mja+1c9jlljvWTlSazM7cKDRfJuR/bOJhcY5NcY=",
+        version = "v1.2.5",
     )
     go_repository(
         name = "com_github_tinylib_msgp",

@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/inspectz"
 	"github.com/cockroachdb/cockroach/pkg/rpc"
 	"github.com/cockroachdb/cockroach/pkg/security"
+	"github.com/cockroachdb/cockroach/pkg/server/ai"
 	"github.com/cockroachdb/cockroach/pkg/server/apiconstants"
 	"github.com/cockroachdb/cockroach/pkg/server/authserver"
 	"github.com/cockroachdb/cockroach/pkg/server/debug"
@@ -46,6 +47,36 @@ type httpServer struct {
 	proxy *nodeProxy
 }
 
+// noGzipResponseWriter wraps http.ResponseWriter to prevent gzip compression
+// and implements http.Flusher for SSE streaming
+type noGzipResponseWriter struct {
+	http.ResponseWriter
+	wroteHeader bool
+}
+
+func (w *noGzipResponseWriter) WriteHeader(code int) {
+	if !w.wroteHeader {
+		// Set Content-Encoding to identity to prevent gzip
+		w.ResponseWriter.Header().Set("Content-Encoding", "identity")
+		w.wroteHeader = true
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *noGzipResponseWriter) Write(b []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+// Flush implements http.Flusher for SSE streaming
+func (w *noGzipResponseWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 func newHTTPServer(
 	cfg BaseConfig,
 	rpcContext *rpc.Context,
@@ -61,7 +92,21 @@ func newHTTPServer(
 			rpcContext:           rpcContext,
 		},
 	}
-	server.gzMux = gziphandler.GzipHandler(http.HandlerFunc(server.mux.ServeHTTP))
+
+	// Create gzip handler with special handling for SSE endpoints
+	gzipHandler := gziphandler.GzipHandler(http.HandlerFunc(server.mux.ServeHTTP))
+	server.gzMux = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip gzip compression for SSE streaming endpoints
+		// SSE requires unbuffered streaming which is incompatible with gzip
+		if strings.HasPrefix(r.URL.Path, "/api/v2/ai/chat/stream") {
+			// Wrap response writer to set Content-Encoding: identity
+			noGzipWriter := &noGzipResponseWriter{ResponseWriter: w}
+			server.mux.ServeHTTP(noGzipWriter, r)
+			return
+		}
+		gzipHandler.ServeHTTP(w, r)
+	})
+
 	return server
 }
 
@@ -158,6 +203,7 @@ func (s *httpServer) setupRoutes(
 	apiServer http.Handler,
 	flags serverpb.FeatureFlags,
 	drpcEnabled bool,
+	tsServer *ts.Server,
 ) error {
 	// OIDC Configuration must happen prior to the UI Handler being defined below so that we have
 	// the system settings initialized for it to pick up from the oidcAuthenticationServer.
@@ -276,6 +322,46 @@ func (s *httpServer) setupRoutes(
 	}
 	s.mux.Handle(debug.Endpoint, handleDebugAuthenticated)
 	s.mux.Handle(inspectz.URLPrefix, handleInspectzAuthenticated)
+
+	// Register AI chat endpoints
+	// Note: We don't create the dbPool here because the SQL server isn't listening yet during startup.
+	// The pool will be created lazily on the first chat request.
+	aiHandler := ai.NewAIHandler(
+		execCfg.InternalDB,
+		s.cfg.Insecure,
+		s.cfg.SSLCertsDir,
+		&s.cfg.Settings.SV,
+		s.cfg.ClusterIDContainer.Get(),
+		tsServer,
+	)
+
+	aiChatHandler := http.HandlerFunc(aiHandler.HandleChatStream)
+	aiListHandler := http.HandlerFunc(aiHandler.HandleListConversations)
+	aiGetHandler := http.HandlerFunc(aiHandler.HandleGetConversation)
+	aiDeleteHandler := http.HandlerFunc(aiHandler.HandleDeleteConversation)
+	aiEnabledHandler := http.HandlerFunc(aiHandler.HandleChatCRDBEnabled)
+
+	// Apply authentication based on security mode
+	handleAIChatAuthenticated := http.Handler(aiChatHandler)
+	handleAIListAuthenticated := http.Handler(aiListHandler)
+	handleAIGetAuthenticated := http.Handler(aiGetHandler)
+	handleAIDeleteAuthenticated := http.Handler(aiDeleteHandler)
+	handleAIEnabledAuthenticated := http.Handler(aiEnabledHandler)
+
+	if !s.cfg.InsecureWebAccess() {
+		// Wrap with authentication in secure mode
+		handleAIChatAuthenticated = authserver.NewMux(authnServer, aiChatHandler, false /* allowAnonymous */)
+		handleAIListAuthenticated = authserver.NewMux(authnServer, aiListHandler, false /* allowAnonymous */)
+		handleAIGetAuthenticated = authserver.NewMux(authnServer, aiGetHandler, false /* allowAnonymous */)
+		handleAIDeleteAuthenticated = authserver.NewMux(authnServer, aiDeleteHandler, false /* allowAnonymous */)
+		handleAIEnabledAuthenticated = authserver.NewMux(authnServer, aiEnabledHandler, false /* allowAnonymous */)
+	}
+
+	s.mux.Handle("/api/v2/ai/chat/stream", handleAIChatAuthenticated)
+	s.mux.Handle("/api/v2/ai/conversations", handleAIListAuthenticated)
+	s.mux.Handle("/api/v2/ai/conversation", handleAIGetAuthenticated)
+	s.mux.Handle("/api/v2/ai/conversation/delete", handleAIDeleteAuthenticated)
+	s.mux.Handle("/api/v2/ai/enabled", handleAIEnabledAuthenticated)
 
 	log.Event(ctx, "added http endpoints")
 

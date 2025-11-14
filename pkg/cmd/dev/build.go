@@ -79,6 +79,7 @@ var buildTargetMapping = map[string]string{
 	"cockroach":             cockroachTarget,
 	"cockroach-sql":         "//pkg/cmd/cockroach-sql:cockroach-sql",
 	"cockroach-short":       "//pkg/cmd/cockroach-short:cockroach-short",
+	"crdb-ai":               "//pkg/crdb-ai:crdb-ai",
 	"crlfmt":                "@com_github_cockroachdb_crlfmt//:crlfmt",
 	"dev":                   devTarget,
 	"docgen":                "//pkg/cmd/docgen:docgen",

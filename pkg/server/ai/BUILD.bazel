@@ -1,0 +1,26 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "ai",
+    srcs = [
+        "api_handler.go",
+        "conversation_manager.go",
+        "db_pool.go",
+        "settings.go",
+    ],
+    importpath = "github.com/cockroachdb/cockroach/pkg/server/ai",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/crdb-ai/internal/agent",
+        "//pkg/crdb-ai/internal/tools",
+        "//pkg/security/username",
+        "//pkg/settings",
+        "//pkg/sql/isql",
+        "//pkg/sql/sem/tree",
+        "//pkg/sql/sessiondata",
+        "//pkg/ts",
+        "//pkg/util/log",
+        "//pkg/util/uuid",
+        "@com_github_jackc_pgx_v5//pgxpool",
+    ],
+)

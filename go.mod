@@ -90,7 +90,7 @@ require (
 require (
 	cloud.google.com/go/compute v1.19.3
 	cloud.google.com/go/profiler v0.3.1
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.11.1
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.17.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.7.0
 	github.com/Azure/azure-sdk-for-go/sdk/keyvault/azkeys v0.9.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute v1.0.0
@@ -270,7 +270,7 @@ require (
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/99designs/keyring v1.2.2 // indirect
 	github.com/AthenZ/athenz v1.10.39 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/internal v1.8.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/keyvault/internal v0.7.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Azure/go-autorest v14.2.0+incompatible // indirect
@@ -432,6 +432,7 @@ require (
 	github.com/mwitkow/go-proto-validators v0.0.0-20180403085117-0950a7990007 // indirect
 	github.com/ohler55/ojg v1.20.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
+	github.com/openai/openai-go v1.12.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/openzipkin/zipkin-go v0.2.5 // indirect
@@ -457,6 +458,10 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
+	github.com/tidwall/gjson v1.14.4 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tklauser/go-sysconf v0.3.9 // indirect
 	github.com/tklauser/numcpus v0.3.0 // indirect
 	github.com/twitchtv/twirp v8.1.0+incompatible // indirect

@@ -1,0 +1,24 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "agent",
+    srcs = [
+        "agent.go",
+        "types.go",
+    ],
+    importpath = "github.com/cockroachdb/cockroach/pkg/crdb-ai/internal/agent",
+    visibility = [
+        "//pkg/crdb-ai:__subpackages__",
+        "//pkg/server/ai:__pkg__",
+    ],
+    deps = [
+        "//pkg/crdb-ai/internal/tools",
+        "//pkg/settings",
+        "//pkg/util/log",
+        "@com_github_openai_openai_go//:openai-go",
+        "@com_github_openai_openai_go//option",
+        "@com_github_openai_openai_go//packages/ssestream",
+        "@com_github_openai_openai_go//responses",
+        "@com_github_openai_openai_go//shared",
+    ],
+)

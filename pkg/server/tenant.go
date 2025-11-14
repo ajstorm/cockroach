@@ -870,6 +870,7 @@ func (s *SQLServerWrapper) PreStart(ctx context.Context) error {
 			DisableKvLevelAdvancedDebug: s.sqlServer.serviceMode != mtinfopb.ServiceModeShared,
 		},
 		drpcEnabled,
+		nil, /* tsServer - tenants don't have timeseries server */
 	); err != nil {
 		return err
 	}

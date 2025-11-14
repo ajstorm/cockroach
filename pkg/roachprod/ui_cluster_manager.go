@@ -710,9 +710,9 @@ func (m *uiClusterManager) StartWorkload(ctx context.Context, clusterName string
 		totalVCPUs = (numNodes - 1) * 4
 	}
 
-	warehouses := int(float64(totalVCPUs) * 12.5)
-	// Use TPCC default of 10 workers per warehouse
-	workers := warehouses * 10
+	warehouses := totalVCPUs * 100
+	// Set workers equal to warehouses
+	workers := warehouses
 	// But limit active workers based on CPU capacity (2.5 per vCPU)
 	activeWorkers := int(float64(totalVCPUs) * 2.5)
 	// Connections should match active workers

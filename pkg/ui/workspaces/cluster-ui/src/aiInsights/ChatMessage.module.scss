@@ -1,0 +1,59 @@
+// Copyright 2025 The Cockroach Authors.
+//
+// Use of this software is governed by the CockroachDB Software License
+// included in the /LICENSE file.
+
+.message {
+  display: flex;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  max-width: 80%;
+
+  &.user {
+    margin-left: auto;
+    background-color: #f3e5f5;
+    border: 1px solid #9c27b0;
+  }
+
+  &.assistant {
+    margin-right: auto;
+    background-color: #f5f5f5;
+    border: 1px solid #e0e0e0;
+  }
+}
+
+.messageContent {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.messageRole {
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+  color: #424242;
+}
+
+.messageText {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: #212121;
+
+  // For plain text (user messages)
+  white-space: pre-wrap;
+  word-wrap: break-word;
+
+  // For markdown content, remove default text formatting
+  > div {
+    white-space: normal;
+  }
+}
+
+.messageTime {
+  font-size: 0.75rem;
+  color: #757575;
+  margin-top: 0.5rem;
+  text-align: right;
+}

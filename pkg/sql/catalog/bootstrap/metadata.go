@@ -472,6 +472,8 @@ func addSystemDescriptorsToSchema(target *MetadataSchema) {
 	target.AddDescriptor(systemschema.TransactionDiagnosticsRequestsTable)
 	target.AddDescriptor(systemschema.TransactionDiagnosticsTable)
 	target.AddDescriptor(systemschema.StatementHintsTable)
+	target.AddDescriptor(systemschema.AIConversationsTable)
+	target.AddDescriptor(systemschema.AIMessagesTable)
 
 	// Tables introduced in 26.1
 	target.AddDescriptor(systemschema.TableStatisticsLocksTable)
@@ -488,7 +490,7 @@ func addSystemDescriptorsToSchema(target *MetadataSchema) {
 // NumSystemTablesForSystemTenant is the number of system tables defined on
 // the system tenant. This constant is only defined to avoid having to manually
 // update auto stats tests every time a new system table is added.
-const NumSystemTablesForSystemTenant = 67
+const NumSystemTablesForSystemTenant = 69
 
 // addSplitIDs adds a split point for each of the PseudoTableIDs to the supplied
 // MetadataSchema.

@@ -84,6 +84,8 @@ var (
 		catconstants.StatementHintsTableName,
 		catconstants.InspectErrorsTableName,
 		catconstants.TableStatisticsLocksTableName,
+		catconstants.AIConversationsTableName,
+		catconstants.AIMessagesTableName,
 	}
 
 	readWriteSystemSequences = []catconstants.SystemTableName{
